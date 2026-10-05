@@ -1,0 +1,58 @@
+{
+  "source": "https://sf-row.my.site.com/s/guest-permit-list",
+  "endpoint": "https://sf-row.my.site.com/s/sfsites/aura",
+  "list_id": "00BPs00000FeHxZMAV",
+  "list_name": "All TOW Sign Permits",
+  "list_api_name": "Copy_of_All_TOW_Sign_Permits",
+  "pagination_method": "ID keyset; Id > last_seen_id; offset always 0",
+  "fetched_at": "2026-10-05T04:23:49.624855+00:00",
+  "record_count": 2531,
+  "source_count": 2531,
+  "pagination_complete": true,
+  "pages": [
+    {
+      "after_id": null,
+      "returned": 500,
+      "next_cursor": "a10Ps00000QrsT7IAJ",
+      "offset": 0
+    },
+    {
+      "after_id": "a10Ps00000QrsT7IAJ",
+      "returned": 500,
+      "next_cursor": "a10Ps00000SnzBtIAJ",
+      "offset": 0
+    },
+    {
+      "after_id": "a10Ps00000SnzBtIAJ",
+      "returned": 500,
+      "next_cursor": "a10Ps00000TpHSmIAN",
+      "offset": 0
+    },
+    {
+      "after_id": "a10Ps00000TpHSmIAN",
+      "returned": 500,
+      "next_cursor": "a10Ps00000Ufr2HIAR",
+      "offset": 0
+    },
+    {
+      "after_id": "a10Ps00000Ufr2HIAR",
+      "returned": 500,
+      "next_cursor": "a10Ps00000VTAuzIAH",
+      "offset": 0
+    },
+    {
+      "after_id": "a10Ps00000VTAuzIAH",
+      "returned": 31,
+      "next_cursor": "a10Ps00000Vh2HdIAJ",
+      "offset": 0
+    },
+    {
+      "after_id": "a10Ps00000Vh2HdIAJ",
+      "returned": 0,
+      "next_cursor": null,
+      "offset": 0
+    }
+  ],
+  "detail_fields_fetched": true,
+  "scope_note": "All entries in this public list, which has source-side filters on expiration date, phase and requested tow-away rights; not every historical SF parking permit."
+}

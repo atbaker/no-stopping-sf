@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Explore San Francisco Public Works tow sign permits, their dates and reported tow status.">
+  <title>SF Tow Signs — Check Temporary No Parking Permits</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23192335'/%3E%3Cpath d='M10 25V7h8a6 6 0 0 1 0 12h-4v6zm4-10h4a2 2 0 0 0 0-4h-4z' fill='white'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/vendor/leaflet.css"><link rel="stylesheet" href="/style.css">
+  <script src="/vendor/leaflet.js" defer></script><script src="/app.mjs" type="module"></script>
+</head>
+<body>
+  <header class="masthead"><div class="brand"><span class="brand-icon" aria-hidden="true">P</span><span>SF <b>TOW SIGNS</b><small>PUBLIC WORKS / PERMIT EXPLORER</small></span></div><div class="header-links"><span class="poc">LOCAL PROTOTYPE</span><a href="https://sf-row.my.site.com/s/guest-permit-list" target="_blank" rel="noopener">Public permit list ↗</a></div></header>
+  <main>
+    <div class="title-row"><div><h1>SF Tow Signs</h1><p class="creator-credit">Inspired by <a href="https://www.instagram.com/_greg_long_/" target="_blank" rel="noopener">Greg Long</a>’s <a href="https://www.instagram.com/reel/Dd6pwYGB5vG/" target="_blank" rel="noopener">Robe Report on SF street space permits</a>.</p></div><div class="snapshot"><span id="snapshot-date">Loading public data…</span><a href="/data/permits.csv" download>Download all permits · CSV</a></div></div>
+    <section class="stats" aria-label="Filtered permit statistics" aria-live="polite">
+      <div class="stat total"><span id="total-label">Permits covering today</span><strong id="total">—</strong><small id="total-detail">San Francisco local date</small></div>
+      <div class="stat"><span><i class="dot green"></i>Enforceable</span><strong id="enforceable">—</strong><small>Reported Tow Status</small></div>
+      <div class="stat"><span><i class="dot red"></i>Not enforceable</span><strong id="not-enforceable">—</strong><small>Reported Tow Status</small></div>
+      <div class="stat distribution"><span>Share not enforceable</span><strong id="percent">—</strong><div class="ratio"><span id="ratio-red"></span><span id="ratio-green"></span><span id="ratio-unknown"></span></div><small id="unknown-detail">Of the filtered permits</small></div>
+    </section>
+    <form class="filters" id="filters" aria-label="Filter permits">
+      <label class="search">Search permits<input id="query" type="search" placeholder="Address, permit number, or company" autocomplete="off"></label>
+      <label>Tow status<select id="tow"><option value="">All tow statuses</option><option>Enforceable</option><option>Not Enforceable</option></select></label>
+      <label>Permit type<select id="type"><option value="">All permit types</option></select></label>
+      <label>Neighborhood<select id="neighborhood"><option value="">All neighborhoods</option></select></label>
+      <label>Date coverage<select id="date-mode"><option value="today">Today</option><option value="date">Choose a date</option><option value="all">All downloaded permits</option></select></label>
+      <label id="date-label" hidden>Selected date<input id="date" type="date"></label>
+      <button class="reset" type="button" id="reset">Reset</button>
+    </form>
+    <div class="coverage-note" id="coverage-note">Loading permit dates and locations…</div>
+    <section class="workspace" aria-label="Map and matching permits">
+      <div class="map-panel"><div class="map-top"><h2>Across San Francisco</h2><button id="fit" type="button">Fit results</button></div><div id="map" role="region" aria-label="Interactive permit map"></div><div class="map-bottom"><div class="legend"><span><i class="dot green"></i>Enforceable</span><span><i class="dot red"></i>Not enforceable</span><span><i class="dot mixed"></i>Mixed / unknown</span></div><span id="mapped-label">Address points</span></div><div class="map-error" id="map-error" hidden>Basemap tiles could not load. Permit points and the list are still available.</div></div>
+      <aside class="results-panel"><div class="results-heading"><h2>Matching permits <span id="result-count">0</span></h2><button type="button" id="export-filtered">Export filtered</button></div><div id="results" class="results" aria-live="polite"><div class="empty">Loading public permits…</div></div><button id="more" type="button" hidden>Show more permits</button></aside>
+    </section>
+    <details class="method"><summary>About this data and the counts</summary><div><p><b>Tow Status comes directly from the public permit record.</b> This is a downloaded snapshot, not live enforcement information. Selecting another date changes the permits' date coverage; it does not recreate their past or future tow status.</p><p>Date coverage uses inclusive tow-away start and end dates, with permit dates and expiration as fallbacks. Missing or invalid date ranges are excluded from date-filtered results. Hours, weekdays, posted sign conditions, and exact curb limits are not represented here.</p><p>Map points are exact normalized address matches to the city's <a href="https://data.sfgov.org/d/3mea-di5p" target="_blank" rel="noopener">Enterprise Addressing System</a>. Unmatched permits remain searchable in the list and counts. Multiple permits at one address are grouped on the map.</p><p id="scope-note"></p><p>Public Works' <a href="https://sfpublicworks.org/services/permits/street-space" target="_blank" rel="noopener">street space guidance</a> explains tow sign verification. Check the original record and posted signs for an individual location.</p></div></details>
+    <div id="error" class="error" role="alert" hidden></div>
+    <footer>SF Tow Signs <span>Public records, made explorable.</span><a href="/data/metadata.json" target="_blank">Snapshot metadata</a></footer>
+  </main>
+  <dialog id="detail"><div class="detail-top"><span>PERMIT DETAILS</span><button id="close-detail" aria-label="Close permit details">×</button></div><div id="detail-body"></div></dialog>
+</body>
+</html>

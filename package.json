@@ -1,0 +1,11 @@
+{
+  "name": "sf-tow-signs",
+  "private": true,
+  "version": "0.1.0",
+  "license": "MIT",
+  "scripts": {
+    "start": "python3 scripts/serve.py",
+    "refresh": "python3 scripts/download_permits.py && python3 scripts/prepare_data.py",
+    "test": "node --test scripts/test_model.mjs && python3 -m unittest discover -s scripts -p 'test_*.py'"
+  }
+}

@@ -1,0 +1,117 @@
+{
+  "method": "ID keyset through ListUiController.postListRecordsByName",
+  "count": 2531,
+  "old_count": 2531,
+  "missing_vs_snapshot": [],
+  "added_vs_snapshot": [],
+  "pages": [
+    {
+      "after": null,
+      "returned": 500,
+      "next": "a10Ps00000QrsT7IAJ",
+      "offset": "0"
+    },
+    {
+      "after": "a10Ps00000QrsT7IAJ",
+      "returned": 500,
+      "next": "a10Ps00000SnzBtIAJ",
+      "offset": "0"
+    },
+    {
+      "after": "a10Ps00000SnzBtIAJ",
+      "returned": 500,
+      "next": "a10Ps00000TpHSmIAN",
+      "offset": "0"
+    },
+    {
+      "after": "a10Ps00000TpHSmIAN",
+      "returned": 500,
+      "next": "a10Ps00000Ufr2HIAR",
+      "offset": "0"
+    },
+    {
+      "after": "a10Ps00000Ufr2HIAR",
+      "returned": 500,
+      "next": "a10Ps00000VTAuzIAH",
+      "offset": "0"
+    },
+    {
+      "after": "a10Ps00000VTAuzIAH",
+      "returned": 31,
+      "next": "a10Ps00000Vh2HdIAJ",
+      "offset": "0"
+    },
+    {
+      "after": "a10Ps00000Vh2HdIAJ",
+      "returned": 0,
+      "next": null,
+      "offset": "0"
+    }
+  ],
+  "verified_at": "2026-10-05T04:23:25.223678+00:00",
+  "source": "https://sf-row.my.site.com/s/guest-permit-list",
+  "offset_probes": [
+    {
+      "page_size": 500,
+      "requested_offset": 0,
+      "returned": 500,
+      "offset": 500,
+      "hasMoreData": true,
+      "totalCount": 2531,
+      "isErrorListView": false,
+      "message": null
+    },
+    {
+      "page_size": 500,
+      "requested_offset": 1500,
+      "returned": 500,
+      "offset": 2000,
+      "hasMoreData": true,
+      "totalCount": 2531,
+      "isErrorListView": false,
+      "message": null
+    },
+    {
+      "page_size": 500,
+      "requested_offset": 2000,
+      "returned": 500,
+      "offset": 2500,
+      "hasMoreData": true,
+      "totalCount": 2531,
+      "isErrorListView": false,
+      "message": null
+    },
+    {
+      "page_size": 500,
+      "requested_offset": 2500,
+      "returned": 0,
+      "offset": null,
+      "hasMoreData": false,
+      "totalCount": null,
+      "isErrorListView": true,
+      "message": "This list view isn't available in Lightning Experience. To see this list view, use Salesforce Classic or switch to another list view."
+    },
+    {
+      "page_size": 2000,
+      "requested_offset": 0,
+      "returned": 2000,
+      "offset": 2000,
+      "hasMoreData": false,
+      "totalCount": 2531,
+      "isErrorListView": false,
+      "message": null
+    }
+  ],
+  "updated_downloader_end_to_end": {
+    "passed": true,
+    "processed_records_identical": true,
+    "source_count": 2531,
+    "record_count": 2531,
+    "fetched_at": "2026-10-05T04:23:49.624855+00:00"
+  },
+  "regression_tests": {
+    "pagination_tests_passed": 5,
+    "frontend_model_tests_passed": 3,
+    "simulated_source_records": 5001
+  }
+}
