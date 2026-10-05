@@ -1,13 +1,21 @@
+import * as maplibregl from '/vendor/maplibre/maplibre-gl.mjs';
 import { sfToday, dateState, filterPermits, summarize } from './model.mjs';
 import { photoUrl, photoSource, photoOriginalUrl } from './photos.mjs';
 const $ = id => document.getElementById(id);
+const form = $('filters'), fields = form.elements;
 const number = n => n.toLocaleString('en-US');
 const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const displayDate = date => date ? new Date(date + 'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : 'Not provided';
-const colors = {'Enforceable':'#087f74','Not Enforceable':'#c74832'};
-let permits = [], filtered = [], metadata, map, layer, visible = 40;
-let markerById = new Map();
-const badge = status => `<span class="badge ${status==='Enforceable'?'yes':status==='Not Enforceable'?'no':'unknown'}">${escape(status)}</span>`;
+// Posted signs print dates as MM/DD/YY.
+const signDate = date => date ? `${date.slice(5,7)}/${date.slice(8,10)}/${date.slice(2,4)}` : '??/??/??';
+const statusKey = status => status==='Enforceable'?'yes':status==='Not Enforceable'?'no':'unknown';
+const percent = (part,total) => total ? Math.round(part/total*100) : 0;
+const STYLE_URL = 'https://tiles.openfreemap.org/styles/positron';
+const RED = '#b71137', INK = '#111111', GRAY = '#8a8a8a';
+const PAGE = 24;
+let permits = [], filtered = [], metadata, map, popup, visible = PAGE;
+let groups = new Map(), groupKeyById = new Map();
+const stamp = status => `<span class="stamp ${statusKey(status)}">${escape(status || 'Unknown')}</span>`;
 const photoFor = p => p.photo?.kind==='tow_sign_submission' && photoUrl(p.photo) && photoSource(p.photo) ? p.photo : null;
 function photoMarkup(photo, size) {
   return `<span class="photo-frame"><img src="${escape(photoUrl(photo,size))}" alt="${escape(photo.title || 'Public permit photo')}" loading="lazy" decoding="async" referrerpolicy="no-referrer"><span class="photo-fallback" hidden>Photo unavailable</span></span>`;
@@ -17,9 +25,11 @@ function handlePhotoErrors(container) {
     img.hidden=true;img.nextElementSibling.hidden=false;
   },{once:true}));
 }
+
 function getFilters() {
-  return {query:$('query').value,tow:$('tow').value,type:$('type').value,neighborhood:$('neighborhood').value,
-    date:$('date-mode').value==='all'?null:$('date-mode').value==='today'?sfToday():$('date').value};
+  const when = fields.when.value;
+  return {query:fields.query.value,tow:fields.tow.value,type:fields.type.value,neighborhood:fields.neighborhood.value,
+    date:when==='all'?null:when==='today'?sfToday():fields.date.value||sfToday()};
 }
 function populate(id, values) {
   for (const value of [...new Set(values)].sort()) {
@@ -28,111 +38,208 @@ function populate(id, values) {
   }
 }
 function reset() {
-  HTMLFormElement.prototype.reset.call($('filters')); $('date').value=sfToday(); $('date-label').hidden=true;
-  update();
+  HTMLFormElement.prototype.reset.call(form); $('date').value=sfToday(); $('date-field').hidden=true;
+  update(); fit();
 }
 function update() {
-  if($('date-mode').value==='date'&&!$('date').value)$('date').value=sfToday();
+  const when = fields.when.value;
+  if(when==='date'&&!$('date').value)$('date').value=sfToday();
   const filters = getFilters();
   filtered = filterPermits(permits, filters).sort((a,b)=>Boolean(!a.address)-Boolean(!b.address) || a.address.localeCompare(b.address,undefined,{numeric:true}) || a.number.localeCompare(b.number));
   const stats = summarize(filtered);
-  $('total').textContent=number(stats.total); $('enforceable').textContent=number(stats.enforceable);
-  $('not-enforceable').textContent=number(stats.not_enforceable);
-  $('percent').textContent=stats.total ? Math.round(stats.not_enforceable/stats.total*100)+'%' : '—';
-  $('ratio-red').style.width=(stats.total?stats.not_enforceable/stats.total*100:0)+'%';
-  $('ratio-green').style.width=(stats.total?stats.enforceable/stats.total*100:0)+'%';
+  $('tally-when').textContent = filters.date ? (when==='today'?'Today · ':'')+displayDate(filters.date)+' · SF date' : 'Every downloaded permit';
+  $('total').textContent=number(stats.total);
+  $('total-caption').textContent = filters.date ? `tow permit${stats.total===1?'':'s'} cover this date` : `tow permit${stats.total===1?'':'s'} in the snapshot`;
+  $('count-no').textContent=number(stats.not_enforceable); $('count-yes').textContent=number(stats.enforceable);
+  $('pct-no').textContent=stats.total?percent(stats.not_enforceable,stats.total)+'%':'';
+  $('pct-yes').textContent=stats.total?percent(stats.enforceable,stats.total)+'%':'';
+  $('ratio-no').style.width=(stats.total?stats.not_enforceable/stats.total*100:0)+'%';
+  $('ratio-yes').style.width=(stats.total?stats.enforceable/stats.total*100:0)+'%';
   $('ratio-unknown').style.width=(stats.total?stats.unknown/stats.total*100:0)+'%';
-  $('unknown-detail').textContent=stats.unknown ? `${number(stats.unknown)} with another / unknown tow status` : 'Of the filtered permits';
-  $('total-label').textContent=filters.date ? ($('date-mode').value==='today'?'Permits covering today':'Permits covering selected date') : 'All matching permits';
-  $('total-detail').textContent=filters.date?displayDate(filters.date)+' · SF local date':'Full downloaded list';
+  $('unknown-detail').textContent=stats.unknown ? `Reported Tow Status on the public record · ${number(stats.unknown)} with another or unknown status` : 'Reported Tow Status on the public record';
   const missingDates=permits.filter(p=>dateState(p,sfToday())==='unknown').length;
   const fallbacks=filtered.filter(p=>p.date_basis!=='Tow-away dates').length;
-  $('coverage-note').textContent=`${number(stats.total)} matching permits · ${number(stats.mapped)} mapped · ${number(stats.total-stats.mapped)} without an exact address match`+
-    (filters.date?` · ${number(missingDates)} records with unknown dates excluded`:'')+
+  $('coverage-note').textContent=`${number(stats.total)} matching · ${number(stats.mapped)} mapped · ${number(stats.total-stats.mapped)} without an exact address match`+
+    (filters.date&&missingDates?` · ${number(missingDates)} with unknown dates excluded`:'')+
     (fallbacks?` · ${number(fallbacks)} use permit dates as a fallback`:'');
   $('result-count').textContent=number(stats.total);
-  $('mapped-label').textContent=`${number(stats.mapped)} / ${number(stats.total)} permits mapped`;
-  visible=40; renderResults(); renderMap();
+  $('mapped-label').textContent=`${number(stats.mapped)} of ${number(stats.total)} permits mapped`;
+  visible=PAGE; renderResults(); renderMap();
 }
 function renderResults() {
   $('results').innerHTML=filtered.length ? filtered.slice(0,visible).map(p=>`
-    <article class="permit"><div class="permit-heading"><div><button class="permit-address" data-permit="${escape(p.id)}">${escape(p.address || 'Address not provided')}</button><div class="permit-number">${escape(p.number)}</div></div>${badge(p.tow_status)}</div>
-      <div class="permit-meta"><span>${escape(p.type)}</span><span>${escape(p.neighborhood)}</span></div>
-      <div class="permit-meta"><span>${p.start_date?displayDate(p.start_date):'Unknown start'} – ${p.end_date?displayDate(p.end_date):'unknown end'}</span></div>
-      <div class="permit-account">${escape(p.account || p.phase)}</div>${photoFor(p)?`<button class="photo-count" data-permit="${escape(p.id)}">Submitted sign photo ↗</button>`:''}${p.lat===null?'<div class="unmapped">Location not mapped · included in counts</div>':''}</article>`).join(''):
+    <button type="button" class="mini-sign" data-permit="${escape(p.id)}" aria-label="${escape(p.address || 'Address not provided')}, ${escape(p.tow_status)}, ${escape(p.number)}">
+      <span class="mini-top"><b aria-hidden="true">No</b><span aria-hidden="true">Stopping</span>${stamp(p.tow_status)}</span>
+      <span class="mini-body">
+        <span class="mini-dates">${signDate(p.start_date)} – ${signDate(p.end_date)}</span>
+        <span class="mini-address">${escape(p.address || 'Address not provided')}</span>
+        <span class="mini-meta">${escape(p.neighborhood)} · ${escape(p.type)}</span>
+        ${photoFor(p)?'<span class="mini-photo">Submitted sign photo on file</span>':''}
+        ${p.lat===null?'<span class="mini-unmapped">Location not mapped · included in counts</span>':''}
+        <span class="mini-rule"></span>
+        <span class="mini-permit"><span>${escape(p.number)}</span><span>${escape(p.account || p.phase)}</span></span>
+      </span>
+    </button>`).join(''):
     '<div class="empty">No permits match these filters.<br>Try another date or reset the filters.</div>';
   $('more').hidden=visible>=filtered.length;
   $('more').textContent=`Show more · ${number(Math.max(0,filtered.length-visible))} remaining`;
 }
 function renderMap() {
-  if (!map) return;
-  layer.clearLayers(); markerById=new Map();
-  const groups=new Map();
+  groups=new Map(); groupKeyById=new Map();
   for (const p of filtered) {
     if (!Number.isFinite(p.lat)||!Number.isFinite(p.lng)) continue;
     const key=`${p.lat},${p.lng}`;
     if (!groups.has(key)) groups.set(key,[]);
-    groups.get(key).push(p);
+    groups.get(key).push(p); groupKeyById.set(p.id,key);
   }
-  for (const group of groups.values()) {
-    const statuses=[...new Set(group.map(p=>p.tow_status))];
-    const color=statuses.length===1 ? colors[statuses[0]]||'#617189' : '#617189';
-    const first=group[0];
-    const marker=L.circleMarker([first.lat,first.lng],{radius:group.length>1?8:5.5,color:'#fff',weight:1.2,fillColor:color,fillOpacity:.85}).addTo(layer);
-    marker.bindTooltip(`<b>${escape(first.address)}</b><br>${number(group.length)} permit${group.length===1?'':'s'} · ${escape(statuses.join(' / '))}`,{direction:'top'});
-    marker.bindPopup(()=>{
-      // Create image elements only for an opened popup, not every map marker.
-      const popup=document.createElement('div');popup.className='map-popup';
-      popup.innerHTML=`<b>${escape(first.address)}</b><small>${number(group.length)} permit${group.length===1?'':'s'} at this address</small>`+
-        group.map(p=>{const photo=photoFor(p);return `<button class="popup-permit" data-permit="${escape(p.id)}">${photo?photoMarkup(photo,'small'):''}<span>${escape(p.number)} ${badge(p.tow_status)}${photo?'<small>Submitted sign photo · View details</small>':''}</span></button>`;}).join('');
-      popup.addEventListener('click',event=>{const button=event.target.closest('[data-permit]');if(button)openDetail(button.dataset.permit);});
-      handlePhotoErrors(popup);return popup;
-    },{maxHeight:300,maxWidth:300});
-    for(const p of group)markerById.set(p.id,marker);
-  }
+  if (!map?.getSource('permits')) return;
+  popup?.remove();
+  map.getSource('permits').setData({type:'FeatureCollection',features:[...groups].map(([key,group])=>{
+    const statuses=new Set(group.map(p=>statusKey(p.tow_status)));
+    return {type:'Feature',geometry:{type:'Point',coordinates:[group[0].lng,group[0].lat]},
+      properties:{key,count:group.length,status:statuses.size===1?[...statuses][0]:'mixed'}};
+  })});
+  map.setFilter('permit-focus',['==',['get','key'],'']);
+}
+function openGroup(key) {
+  const group=groups.get(key); if(!group)return;
+  if(group.length===1)return openDetail(group[0].id);
+  const statuses=[...new Set(group.map(p=>p.tow_status))];
+  const el=document.createElement('div'); el.className='map-popup';
+  el.innerHTML=`<b>${escape(group[0].address)}</b><small>${number(group.length)} permits at this address · ${escape(statuses.join(' / '))}</small>`+
+    group.map(p=>{const photo=photoFor(p);return `<button type="button" class="popup-permit" data-permit="${escape(p.id)}">${photo?photoMarkup(photo,'small'):''}<span><b>${escape(p.number)}</b><span class="popup-status ${statusKey(p.tow_status)}">${escape(p.tow_status)}</span>${photo?'<small>Sign photo · View details</small>':''}</span></button>`;}).join('');
+  handlePhotoErrors(el);
+  popup?.remove();
+  popup=new maplibregl.Popup({maxWidth:'290px',focusAfterOpen:false}).setLngLat([group[0].lng,group[0].lat]).setDOMContent(el).addTo(map);
 }
 function fit() {
   if (!map) return;
-  const points=filtered.filter(p=>Number.isFinite(p.lat)&&Number.isFinite(p.lng)).map(p=>[p.lat,p.lng]);
-  if(points.length)map.fitBounds(L.latLngBounds(points),{padding:[25,25],maxZoom:15});
+  const points=filtered.filter(p=>Number.isFinite(p.lat)&&Number.isFinite(p.lng));
+  if(!points.length)return;
+  const bounds=new maplibregl.LngLatBounds();
+  for(const p of points)bounds.extend([p.lng,p.lat]);
+  map.fitBounds(bounds,{padding:36,maxZoom:15,duration:map.loaded()?600:0});
+}
+function locate(p) {
+  $('detail').close();
+  const key=groupKeyById.get(p.id); if(!map||!key)return;
+  map.setFilter('permit-focus',['==',['get','key'],key]);
+  $('map').scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'center'});
+  map.flyTo({center:[p.lng,p.lat],zoom:17});
 }
 function openDetail(id) {
   const p=permits.find(p=>p.id===id);if(!p)return;
+  popup?.remove();
+  const info=[['Permit number',p.number],['Permit type',p.type],['Company / permit holder',p.account||'Not provided','wide'],['Phase',p.phase],['Status',p.status],['Permit start',displayDate(p.permit_start_date)],['Permit end',displayDate(p.permit_end_date)],['Expiration',displayDate(p.expiration_date)],['Linear feet',p.linear_feet??'Not provided'],['Number of signs',p.sign_count??'Not provided']];
   const photo=photoFor(p);
   const uploaded=photo?.uploaded_at?new Date(photo.uploaded_at).toLocaleDateString('en-US',{timeZone:'America/Los_Angeles',month:'short',day:'numeric',year:'numeric'}):'Date not provided';
-  const gallery=photo?`<section class="permit-photos" aria-label="Submitted tow-sign photo"><h3>Submitted tow-sign photo</h3><p>Most recent image upload for this permit. Contents and location are not independently verified; it may show an earlier posting. Tap for the original.</p><div class="photo-gallery"><div><a class="photo-card" href="${escape(photoOriginalUrl(photo))}" target="_blank" rel="noopener noreferrer">${photoMarkup(photo,'large')}<span>${escape(photo.title)} ↗ · Uploaded ${escape(uploaded)}</span></a><a class="photo-source" href="${escape(photoSource(photo))}" target="_blank" rel="noopener noreferrer">Official tow-sign submission ↗</a></div></div></section>`:`<p class="no-photos">${metadata.photos?'No public tow-sign photo uploads found for this permit.':'Tow-sign photos have not been indexed for this snapshot.'}</p>`;
-  const fields=[['Permit type',p.type],['Neighborhood',p.neighborhood],['Tow-away start',displayDate(p.tow_start_date)],['Tow-away end',displayDate(p.tow_end_date)],['Phase',p.phase],['Status',p.status],['Permit start',displayDate(p.permit_start_date)],['Permit end',displayDate(p.permit_end_date)],['Expiration',displayDate(p.expiration_date)],['Company / permit holder',p.account||'Not provided'],['Linear feet',p.linear_feet??'Not provided'],['Number of signs',p.sign_count??'Not provided']];
-  $('detail-body').innerHTML=`<h2>${escape(p.address||'Address not provided')}</h2><div class="detail-number">${escape(p.number)}</div>${badge(p.tow_status)}${gallery}<dl class="detail-grid">${fields.map(([label,value])=>`<div><dt>${label}</dt><dd>${escape(value)}</dd></div>`).join('')}</dl>${p.scope?`<p class="detail-scope">${escape(p.scope)}</p>`:''}<div class="detail-links"><a href="${escape(p.source_url)}" target="_blank" rel="noopener">Open public permit ↗</a>${markerById.has(p.id)?'<button id="locate">Show on map</button>':''}</div><p class="detail-note">${escape(p.date_basis)} · ${escape(p.location_basis)}<br>Tow Status reflects the downloaded snapshot. Address points do not show exact curb limits.</p>`;
+  const gallery=photo?`<a class="photo-card" href="${escape(photoOriginalUrl(photo))}" target="_blank" rel="noopener noreferrer">${photoMarkup(photo,'large')}<span>${escape(photo.title)} ↗ · Uploaded ${escape(uploaded)}</span></a><p class="sheet-note">Most recent image upload for this permit. Contents and location are not independently verified; it may show an earlier posting. <a href="${escape(photoSource(photo))}" target="_blank" rel="noopener noreferrer">Official tow-sign submission ↗</a></p>`:`<p class="sheet-note">${metadata.photos?'No public tow-sign photo uploads found for this permit.':'Tow-sign photos have not been indexed for this snapshot.'}</p>`;
+  const size=[p.neighborhood,p.linear_feet?`${number(p.linear_feet)} linear ft`:null,p.sign_count?`${number(p.sign_count)} sign${p.sign_count===1?'':'s'}`:null].filter(Boolean).join(' · ');
+  $('detail-body').innerHTML=`
+    <div class="sheet-section">
+      <p class="sign-label">Location:</p>
+      <h2 class="sheet-address" id="detail-title">${escape(p.address||'Address not provided')}</h2>
+      <p class="sheet-sub">${escape(size)}</p>
+    </div>
+    <div class="sheet-section">
+      <p class="sign-label">Date &amp; Time:</p>
+      <p class="sheet-dates">${signDate(p.tow_start_date||p.start_date)} – ${signDate(p.tow_end_date||p.end_date)}</p>
+      <p class="sheet-note">${escape(p.date_basis)}. Hours and weekdays printed on posted signs aren't in the public data.</p>
+    </div>
+    <div class="sheet-section">
+      <p class="sign-label">Tow status:</p>
+      <span class="stamp sheet-stamp ${statusKey(p.tow_status)}">${escape(p.tow_status||'Unknown')}</span>
+      <p class="sheet-note">As reported on the public record when this snapshot was downloaded.</p>
+    </div>
+    <div class="sheet-section">
+      <p class="sign-label">Posted sign photo:</p>
+      ${gallery}
+    </div>
+    <div class="sheet-section">
+      <p class="sign-label">Permit information:</p>
+      <dl class="sheet-grid">${info.map(([label,value,wide])=>`<div${wide?' class="wide"':''}><dt>${label}</dt><dd>${escape(value)}</dd></div>`).join('')}</dl>
+      ${p.scope?`<p class="sheet-scope">${escape(p.scope)}</p>`:''}
+    </div>
+    <div class="sheet-foot"><a href="${escape(p.source_url)}" target="_blank" rel="noopener">Open public permit ↗</a>${groupKeyById.has(p.id)&&map?'<button type="button" id="locate">Show on map</button>':''}</div>
+    <p class="sheet-fine">${escape(p.location_basis)}. Address points do not show exact curb limits. Always check the posted sign.</p>`;
   handlePhotoErrors($('detail-body'));
-  $('detail').scrollTop=0;
-  if($('locate'))$('locate').addEventListener('click',()=>{
-    $('detail').close();map.setView([p.lat,p.lng],17);markerById.get(p.id)?.openPopup();
-    $('map').scrollIntoView({behavior:'smooth',block:'center'});
-  });
+  $('locate')?.addEventListener('click',()=>locate(p));
   $('detail').showModal();
+  $('detail').querySelector('.sign-sheet').scrollTop=0;
 }
 function exportFiltered() {
   if(!filtered.length)return;
-  const fields=Object.keys(filtered[0]);
+  const keys=Object.keys(filtered[0]);
   // Spreadsheet-safe strings: prevent public free text from becoming formulas.
   const cell=value=>{let s=value&&typeof value==='object'?JSON.stringify(value):String(value??'');if(typeof value==='string'&&/^[=+\-@\t\r]/.test(s))s="'"+s;return '"'+s.replace(/"/g,'""')+'"';};
-  const blob=new Blob(['\uFEFF'+[fields.map(cell).join(','),...filtered.map(p=>fields.map(k=>cell(p[k])).join(','))].join('\r\n')],{type:'text/csv;charset=utf-8'});
+  const blob=new Blob(['﻿'+[keys.map(cell).join(','),...filtered.map(p=>keys.map(k=>cell(p[k])).join(','))].join('\r\n')],{type:'text/csv;charset=utf-8'});
   const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=`sf-permits-${getFilters().date||'all'}-filtered.csv`;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+// Recolor OpenFreeMap's Positron style into a quiet gray base so red and black permit dots carry the color.
+function restyle(style) {
+  const c={land:'#f1f1ef',park:'#e3e7df',water:'#cfd8dd',building:'#e6e6e3',buildingLine:'#dbdbd7',road:'#ffffff',minor:'#ffffff',casing:'#d3d3cf',rail:'#d5d5d1',label:'#4d4d4d',halo:'#f1f1ef',waterLabel:'#5f717b'};
+  style.layers=style.layers.filter(l=>!/^(aeroway|airport|highway-shield|road_shield|boundary|landcover_ice|landcover_glacier|label_country|label_state|highway-name-path)/.test(l.id));
+  for(const l of style.layers){
+    const paint=l.paint??={}, id=l.id;
+    if(id==='background')paint['background-color']=c.land;
+    else if(id==='park'||id==='landcover_wood')paint['fill-color']=c.park;
+    else if(id==='landuse_residential')paint['fill-color']=c.land;
+    else if(id==='water')paint['fill-color']=c.water;
+    else if(id==='waterway')paint['line-color']=c.water;
+    else if(id==='building'){paint['fill-color']=c.building;paint['fill-outline-color']=c.buildingLine;}
+    else if(id.startsWith('road_'))l.type==='fill'?paint['fill-color']=c.land:paint['line-color']=c.land;
+    else if(id.includes('dashline'))paint['line-color']=c.land;
+    else if(id.startsWith('railway'))paint['line-color']=c.rail;
+    else if(id.includes('casing'))paint['line-color']=c.casing;
+    else if(id.includes('subtle'))paint['line-color']=c.casing;
+    else if(/inner/.test(id))paint['line-color']=c.road;
+    else if(/highway_minor|highway_path/.test(id)){paint['line-color']=c.minor;paint['line-opacity']=1;}
+    else if(l.type==='symbol'){paint['text-color']=/water/.test(id)?c.waterLabel:c.label;paint['text-halo-color']=c.halo;paint['text-halo-width']=1.4;paint['text-halo-blur']=0;}
+  }
+  return style;
+}
+async function initMap() {
+  const response=await fetch(STYLE_URL);if(!response.ok)throw new Error(`Map style failed (${response.status})`);
+  map=new maplibregl.Map({container:'map',style:restyle(await response.json()),center:[-122.443,37.758],zoom:11.4,minZoom:10,maxZoom:19,
+    maxBounds:[[-122.75,37.6],[-122.15,37.92]],cooperativeGestures:true,dragRotate:false,pitchWithRotate:false,touchPitch:false,attributionControl:{compact:true}});
+  map.touchZoomRotate.disableRotation();map.keyboard.disableRotation();
+  map.addControl(new maplibregl.NavigationControl({showCompass:false}),'top-right');
+  map.addControl(new maplibregl.GeolocateControl({positionOptions:{enableHighAccuracy:true},fitBoundsOptions:{maxZoom:16}}),'top-right');
+  let tileErrors=0;map.on('error',()=>{if(++tileErrors>=3)$('map-error').hidden=false;});
+  await map.once('load');
+  map.addSource('permits',{type:'geojson',data:{type:'FeatureCollection',features:[]}});
+  map.addLayer({id:'permit-dots',type:'circle',source:'permits',
+    paint:{'circle-color':['match',['get','status'],'yes',INK,'no',RED,GRAY],
+      'circle-radius':['interpolate',['linear'],['zoom'],10,['+',1.6,['*',.3,['min',['get','count'],5]]],12,['+',2.6,['*',.4,['min',['get','count'],5]]],14,['+',5,['*',.6,['min',['get','count'],6]]],17,['+',9,['*',.9,['min',['get','count'],8]]]],
+      'circle-stroke-color':'#ffffff','circle-stroke-width':['interpolate',['linear'],['zoom'],10,.7,14,1.6,17,2.5]}});
+  map.addLayer({id:'permit-focus',type:'circle',source:'permits',filter:['==',['get','key'],''],
+    paint:{'circle-radius':18,'circle-color':'rgba(0,0,0,0)','circle-stroke-color':RED,'circle-stroke-width':4}});
+  // Invisible, finger-sized hit targets around each dot.
+  map.addLayer({id:'permit-hit',type:'circle',source:'permits',paint:{'circle-radius':['interpolate',['linear'],['zoom'],10,8,15,15],'circle-opacity':0}});
+  map.on('click','permit-hit',event=>{
+    const nearest=event.features.map(f=>({f,d:map.project(f.geometry.coordinates).dist(event.point)})).sort((a,b)=>a.d-b.d)[0];
+    if(nearest)openGroup(nearest.f.properties.key);
+  });
+  map.on('mouseenter','permit-hit',()=>{map.getCanvas().style.cursor='pointer';});
+  map.on('mouseleave','permit-hit',()=>{map.getCanvas().style.cursor='';});
+  new ResizeObserver(()=>map.resize()).observe($('map'));
+  renderMap();fit();
 }
 function registerTools() {
   if(!document.modelContext?.registerTool)return;
   const lifecycle=new AbortController();
+  const optionsFor=key=>key==='tow'?[...form.querySelectorAll('input[name="tow"]')].map(i=>i.value):[...$(key).options].map(o=>o.value);
   const tool={name:'filter_sf_permits',title:'Filter SF permits',description:'Update the visible permit filters and return matching counts for this downloaded snapshot.',inputSchema:{type:'object',properties:{query:{type:'string'},tow:{type:'string',enum:['','Enforceable','Not Enforceable']},type:{type:'string'},neighborhood:{type:'string'},date:{type:['string','null'],description:'YYYY-MM-DD for date coverage, or null for all downloaded permits'}},additionalProperties:false},annotations:{readOnlyHint:false,untrustedContentHint:true},execute:input=>{
     if(!input||typeof input!=='object'||Array.isArray(input))throw new Error('Expected filter object');
     for(const [key,value]of Object.entries(input)){
       if(!['query','tow','type','neighborhood','date'].includes(key))throw new Error('Unknown filter');
       if(key==='date'){if(value!==null&&(!/^\d{4}-\d{2}-\d{2}$/.test(value)||new Date(value+'T12:00:00Z').toISOString().slice(0,10)!==value))throw new Error('Invalid date');}
       else if(typeof value!=='string')throw new Error('Filters must be strings');
-      else if(key!=='query'&&![...$(key).options].some(o=>o.value===value))throw new Error('Unknown filter value');
+      else if(key!=='query'&&!optionsFor(key).includes(value))throw new Error('Unknown filter value');
     }
     for(const [key,value]of Object.entries(input)){
-      if(key==='date'){$('date-mode').value=value===null?'all':'date';if(value)$('date').value=value;$('date-label').hidden=value===null;}
-      else $(key).value=value;
+      if(key==='date'){fields.when.value=value===null?'all':'date';if(value)$('date').value=value;$('date-field').hidden=value===null;}
+      else fields[key].value=value;
     }
     update();return summarize(filtered);
   }};
@@ -141,29 +248,28 @@ function registerTools() {
 }
 async function init() {
   $('date').value=sfToday();
-  $('filters').addEventListener('submit',event=>event.preventDefault());
-  $('filters').addEventListener('change',()=>{$('date-label').hidden=$('date-mode').value!=='date';update();});
-  let debounce;$('query').addEventListener('input',()=>{clearTimeout(debounce);debounce=setTimeout(update,120);});
+  form.addEventListener('submit',event=>event.preventDefault());
+  form.addEventListener('change',event=>{
+    if(event.target.name==='query')return;
+    $('date-field').hidden=fields.when.value!=='date';update();
+    if(event.target.name!=='when'||fields.when.value!=='date')fit();
+  });
+  let debounce;$('query').addEventListener('input',()=>{clearTimeout(debounce);debounce=setTimeout(()=>{update();fit();},150);});
   $('reset').addEventListener('click',reset);$('fit').addEventListener('click',fit);
-  $('results').addEventListener('click',event=>{const button=event.target.closest('[data-permit]');if(button)openDetail(button.dataset.permit);});
-  $('more').addEventListener('click',()=>{visible+=40;renderResults();});
+  document.addEventListener('click',event=>{const button=event.target.closest('[data-permit]');if(button)openDetail(button.dataset.permit);});
+  $('more').addEventListener('click',()=>{visible+=PAGE;renderResults();});
   $('export-filtered').addEventListener('click',exportFiltered);
   $('close-detail').addEventListener('click',()=>$('detail').close());
-  $('detail').addEventListener('click',event=>{if(event.target===$('detail')){const rect=$('detail').getBoundingClientRect();if(event.clientX<rect.left||event.clientX>rect.right||event.clientY<rect.top||event.clientY>rect.bottom)$('detail').close();}});
+  $('detail').addEventListener('click',event=>{if(event.target===$('detail'))$('detail').close();});
   try {
     const response=await fetch('/data/permits.json');if(!response.ok)throw new Error(`Data download failed (${response.status})`);
     ({permits,metadata}=await response.json());
-    $('snapshot-date').textContent='Snapshot · '+new Date(metadata.fetched_at).toLocaleString('en-US',{timeZone:'America/Los_Angeles',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})+' PT';
+    $('snapshot-date').textContent='Snapshot · '+new Date(metadata.fetched_at).toLocaleString('en-US',{timeZone:'America/Los_Angeles',month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'})+' PT';
     $('scope-note').textContent=`${number(metadata.record_count)} unique permits downloaded; source count ${number(metadata.source_count)}. ${metadata.scope_note}`;
-    $('photo-note').textContent=metadata.photos?`One submitted tow-sign photo available for each of ${number(metadata.photos.selected_image_count)} permits, selected from ${number(metadata.photos.image_count)} uploads. We choose the newest image upload from TOW sign photo submissions. Index updated ${new Date(metadata.photos.fetched_at).toLocaleString('en-US',{timeZone:'America/Los_Angeles'})} PT. The submission links each upload to its permit’s address; image contents and location are not independently verified. Photos may show an earlier posting and do not determine Tow Status. Direct permit attachments and PDFs are excluded.`:'Tow-sign photo uploads have not been indexed for this snapshot.';
-    populate('type',permits.map(p=>p.type));populate('neighborhood',permits.map(p=>p.neighborhood));populate('tow',permits.map(p=>p.tow_status));
-    if(window.L){
-      map=L.map('map',{preferCanvas:true,scrollWheelZoom:false,tapHold:true}).setView([37.763,-122.443],12);
-      const tiles=L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',maxZoom:19}).addTo(map);
-      let failures=0;tiles.on('tileerror',()=>{if(++failures>=3)$('map-error').hidden=false;});tiles.on('load',()=>{if(failures===0)$('map-error').hidden=true;});
-      layer=L.layerGroup().addTo(map);new ResizeObserver(()=>map.invalidateSize()).observe($('map'));
-    }else{$('map-error').hidden=false;$('map-error').textContent='Map library could not load. All permits remain available in the list.';}
-    update();fit();registerTools();
-  } catch(error){$('error').hidden=false;$('error').textContent=`Could not load the permit snapshot. ${error.message}. Run the data preparation script and reload.`;$('results').innerHTML='<div class="empty">Permit data unavailable.</div>';$('coverage-note').textContent='Data unavailable';}
+    $('photo-note').textContent=metadata.photos?`One submitted tow-sign photo available for each of ${number(metadata.photos.selected_image_count)} permits, selected from ${number(metadata.photos.image_count)} uploads. I choose the newest image upload from TOW sign photo submissions. Index updated ${new Date(metadata.photos.fetched_at).toLocaleString('en-US',{timeZone:'America/Los_Angeles'})} PT. The submission links each upload to its permit’s address; image contents and location are not independently verified. Photos may show an earlier posting and do not determine Tow Status. Direct permit attachments and PDFs are excluded.`:'Tow-sign photo uploads have not been indexed for this snapshot.';
+    populate('type',permits.map(p=>p.type));populate('neighborhood',permits.map(p=>p.neighborhood));
+    update();registerTools();
+  } catch(error){$('error').hidden=false;$('error').textContent=`Could not load the permit snapshot. ${error.message}. Run the data preparation script and reload.`;$('results').innerHTML='<div class="empty">Permit data unavailable.</div>';$('coverage-note').textContent='Data unavailable';return;}
+  initMap().catch(()=>{$('map-error').hidden=false;});
 }
 init();

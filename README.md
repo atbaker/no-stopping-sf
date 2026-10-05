@@ -2,11 +2,11 @@
 
 A local, mobile-friendly proof of concept for exploring San Francisco Public Works tow sign permits. Includes a map, address/company/permit search, tow status, permit type, neighborhood and date filters, permit details with public photo attachments, summary counts, and full/filtered CSV export. No deployment or credentials required.
 
-The credit below the page title links to [Greg Long](https://www.instagram.com/_greg_long_/) and his [Robe Report on SF street space permits](https://www.instagram.com/reel/Dd6pwYGB5vG/), which inspired this project. His name and the reel's authorship were verified directly on Instagram; the credit acknowledges inspiration, while the permit counts come from Public Works records.
+The credit below the page title names the creator, [Andrew Baker](https://x.com/andrewtorkbaker), and links to [Greg Long's post on SF street space permits](https://www.instagram.com/reel/Dd6pwYGB5vG/), which inspired this project. The reel's authorship was verified directly on Instagram; the credit acknowledges inspiration, while the permit counts come from Public Works records.
 
 ## Run
 
-Targets [Python 3.14.8](https://www.python.org/downloads/release/python-3148/), the latest stable release verified October 4, 2026. [uv](https://docs.astral.sh/uv/getting-started/installation/) manages Python and dependencies. The exact interpreter is pinned in `.python-version`; `pyproject.toml` declares dependencies and `uv.lock` pins all resolved packages. Serving the bundled snapshot uses only the standard library; Leaflet is included locally.
+Targets [Python 3.14.8](https://www.python.org/downloads/release/python-3148/), the latest stable release verified October 4, 2026. [uv](https://docs.astral.sh/uv/getting-started/installation/) manages Python and dependencies. The exact interpreter is pinned in `.python-version`; `pyproject.toml` declares dependencies and `uv.lock` pins all resolved packages. Serving the bundled snapshot uses only the standard library; MapLibre GL JS is included locally.
 
 ```sh
 uv run --locked python scripts/serve.py
@@ -20,7 +20,9 @@ For a temporary public tunnel, run separately:
 ngrok http 3000
 ```
 
-The site uses same-origin relative URLs, so the map, filters and CSV exports work through the tunnel. For the reserved development URL, use `ngrok http 3000 --url https://atbaker.ngrok.io`. Map tiles use OpenStreetMap's standard browser tile service and need internet access; attribution is displayed. Do not bulk prefetch tiles. Fonts use Google Fonts with system fallbacks.
+The site uses same-origin relative URLs, so the map, filters and CSV exports work through the tunnel. For the reserved development URL, use `ngrok http 3000 --url https://atbaker.ngrok.io`. Map tiles are [OpenFreeMap](https://openfreemap.org) vector tiles (no API key), loaded from its Positron style and recolored at runtime in `app.mjs`; they need internet access and attribution is displayed. Do not bulk prefetch tiles. Fonts use Google Fonts with system fallbacks.
+
+The visual design borrows from San Francisco's temporary "Tow-Away No Stopping" signs (red and white base, black print for site data). The site states it is unofficial and not affiliated with SFMTA or SF Public Works.
 
 ## Snapshot
 
@@ -109,11 +111,11 @@ npm test
 node --check site/dist/app.mjs
 ```
 
-Tests cover SF timezone handling around UTC midnight and DST, inclusive date boundaries, missing/inverted date intervals, exact Tow Status classification, keeping unmatched records in totals, safe photo URLs, attachment pagination, choosing one eligible photo, transient retry recovery, permanent failures, attempt exhaustion, `Retry-After`, concurrent HTTP requests, ordered result merging and resuming unvalidated batches after a failure. Browser checks cover desktop and phone layouts, status/date/search filters, empty states, details, map location focus, CSV downloads, and responsive overflow. The browser tool `filter_sf_permits` is registered when WebMCP is available and uses the same visible filter state.
+Tests cover SF timezone handling around UTC midnight and DST, inclusive date boundaries, missing/inverted date intervals, exact Tow Status classification, keeping unmatched records in totals, safe photo URLs, attachment pagination, choosing one eligible photo, transient retry recovery, permanent failures, attempt exhaustion, `Retry-After`, concurrent HTTP requests, ordered result merging and resuming unvalidated batches after a failure. Browser checks cover desktop, 375px and 320px phone layouts, status/date/search filters, empty states, details, map location focus, CSV downloads, and responsive overflow. The browser tool `filter_sf_permits` is registered when WebMCP is available and uses the same visible filter state.
 
 ## License
 
-Original project code is [MIT licensed](LICENSE). The bundled Leaflet 1.9.4 files retain their [BSD 2-Clause license](site/dist/vendor/LEAFLET-LICENSE.txt). City datasets and external map tiles remain subject to their respective source terms; the MIT license does not relicense those sources.
+Original project code is [MIT licensed](LICENSE). The bundled MapLibre GL JS 6.12.0 files retain their [BSD 3-Clause license](site/dist/vendor/maplibre/LICENSE.txt). City datasets and external map tiles remain subject to their respective source terms; the MIT license does not relicense those sources.
 
 For optional analysis with DuckDB (not required to run the site):
 
