@@ -1,18 +1,18 @@
 # SF Tow Signs
 
-A local, mobile-friendly proof of concept for exploring San Francisco Public Works tow sign permits. Includes a map, address/company/permit search, tow status, permit type, neighborhood and date filters, permit details, summary counts, and full/filtered CSV export. No deployment or credentials required.
+A local, mobile-friendly proof of concept for exploring San Francisco Public Works tow sign permits. Includes a map, address/company/permit search, tow status, permit type, neighborhood and date filters, permit details with public photo attachments, summary counts, and full/filtered CSV export. No deployment or credentials required.
 
 The credit below the page title names the creator, [Andrew Baker](https://x.com/andrewtorkbaker), and links to [Greg Long's post on SF street space permits](https://www.instagram.com/reel/Dd6pwYGB5vG/), which inspired this project. The reel's authorship was verified directly on Instagram; the credit acknowledges inspiration, while the permit counts come from Public Works records.
 
 ## Run
 
-Requires Python 3.10+. No Python packages or npm installation needed; MapLibre GL JS is included locally.
+Targets [Python 3.14.8](https://www.python.org/downloads/release/python-3148/), the latest stable release verified October 4, 2026. [uv](https://docs.astral.sh/uv/getting-started/installation/) manages Python and dependencies. The exact interpreter is pinned in `.python-version`; `pyproject.toml` declares dependencies and `uv.lock` pins all resolved packages. Serving the bundled snapshot uses only the standard library; MapLibre GL JS is included locally.
 
 ```sh
-python3 scripts/serve.py
+uv run --locked python scripts/serve.py
 ```
 
-Open **http://127.0.0.1:3000**. The server exposes only `site/dist`, not the workspace or raw data cache. To use another port: `python3 scripts/serve.py --port 3001`.
+Open **http://127.0.0.1:3000**. The server exposes only `site/dist`, not the workspace or raw data cache. To use another port: `uv run --locked python scripts/serve.py --port 3001`.
 
 For a temporary public tunnel, run separately:
 
@@ -53,11 +53,24 @@ Files:
 | `data/permits.csv` | Clean, map-ready CSV, 2,531 rows |
 | `data/permits_raw.csv` / `data/permits_raw.json` | Original public Salesforce fields, including selected detail fields |
 | `data/download_metadata.json` | Source count, pagination audit, fetch time and scope |
+| `data/permit_photos.json` | Public image metadata, current file version IDs, source parents and photo index audit |
 | `site/dist/data/permits.json` | Frontend snapshot, normalized fields and metadata |
 | `site/dist/data/permits.csv` | Downloadable clean CSV |
 | `site/dist/data/metadata.json` | Public snapshot and geocoding audit |
 
 CSV free-text fields beginning with spreadsheet formula characters receive a leading apostrophe in the clean exports. JSON and raw CSV preserve the original values.
+
+## Public photos
+
+The Files tab contains generated PDFs directly attached to a permit and photo uploads attached to related `TOW Away Sign Photo` submissions. `download_photos.py` follows only those tow-sign submissions. It indexes image file types (JPEG, PNG, GIF, WebP), excludes direct permit attachments, PDFs and other documents, deduplicates files per permit and retrieves `ContentDocument.LatestPublishedVersionId` for the selected images via bulk UI API reads (100 IDs per request). It stores no uploader profile data or original image bytes. The current index has 4,362 candidate uploads across 1,048 permits.
+
+Submission lists use the public related-list UI API and follow its next-page tokens. Attachments use `RelatedListViewDataManagerController/ACTION$getItems`; row metadata comes from Aura's `$Record` provider. It follows returned offsets/query locators while checking for repeated pages, missing metadata and parent mismatches. This legacy attachment service has not been demonstrated to support arbitrarily large lists for an individual parent: API errors or a full 500-row page marked final fail the refresh instead of silently publishing that result. The permit list itself still uses the verified ID keyset traversal described above.
+
+A permit can have multiple tow-sign submissions, with several images in each. The frontend data model exposes a single nullable `photo` field: the image with the newest upload timestamp, with file ID as a deterministic tie breaker. The full candidate index remains in `data/permit_photos.json`, with file-version lookups required only for the selected photos. This is a selection heuristic, not a determination of which physical sign is currently posted.
+
+The static frontend hotlinks Salesforce's `THUMB240BY180` renditions in opened map popups and `THUMB720BY480` in details. Images are loaded on demand; opening the app does not fetch every permit photo. A sample anonymous request returned a 28 KB thumbnail and a 129 KB larger preview versus a 6.2 MB original. Tapping a photo opens the original, with a separate link to its official source submission/permit. Missing renditions display a fallback and retain the source link. File version IDs determine the URLs; attachment text cannot inject arbitrary image hosts.
+
+Photos are labeled “Submitted tow-sign photo.” The submission links the upload to its permit and address, but it does not independently verify the pictured sign or location. Images may show an earlier posting and are not used to infer Tow Status. Files remain hosted by the city, so availability can change. Every normal refresh re-indexes attachments, because a file can change without changing the permit's modification timestamp. The photo fetch time and coverage counts are included in the snapshot metadata. The CSV `photo` cell contains JSON metadata for the selected image, or is blank.
 
 ## What “today” means
 
@@ -68,17 +81,25 @@ Today is calculated in `America/Los_Angeles`, independently of the viewer's time
 ## Refresh
 
 ```sh
-python3 scripts/download_permits.py
-python3 scripts/prepare_data.py
+uv sync --locked
+npm run refresh
 ```
 
-Or `npm run refresh`. Reload the browser afterward. The refresh updates the list and re-fetches details for new/modified records; unchanged records use a cache keyed by the source's `LastModifiedDate`. The metadata shows the new download time. The script fails on incomplete pagination, changed source count, repeated IDs, ignored cursor filters, or API failures; the previously prepared site snapshot stays available until preparation succeeds.
+The first `uv sync --locked` installs the pinned Python if needed and creates `.venv` with the locked dependencies. Use `uv add` / `uv remove` to change dependencies, and include the resulting `pyproject.toml` and `uv.lock` changes together. Update `.python-version` and the supported Python range when adopting a newer stable Python release. All npm commands invoke `uv run --locked`, which refuses to silently change the dependency lockfile.
+
+Run `npm run refresh` for subsequent refreshes, then reload the browser. It downloads permits, indexes photos and prepares the static snapshot. Details for unchanged records use a cache keyed by the source's `LastModifiedDate`. The scripts fail on incomplete pagination, changed source count, repeated IDs, ignored cursor filters, mismatched photo coverage or API failures; the previously prepared site snapshot stays available until preparation succeeds. An interrupted photo run can resume completed stages with `uv run --locked python scripts/download_photos.py --resume`; this is only for the same interrupted snapshot, not normal nightly refreshes.
+
+Each download process uses one shared [HTTPX](https://www.python-httpx.org/advanced/clients/) client, reusing connections to Salesforce and closing its pool on exit. Photo submission and attachment pages are fetched in bounded waves of three concurrent requests, each containing up to 25 Salesforce actions. Permit ID cursor pages, detail batches and bulk file-version reads remain sequential. Use `uv run --locked python scripts/download_photos.py --concurrency 1` for serial retrieval; the supported range is 1–8. Results are validated and merged in input order on the main thread. Attachment checkpoints remove a batch only after validation succeeds, keeping other in-flight or unprocessed work pending for resume. Images remain hotlinked; these requests retrieve metadata only.
+
+Live HTTPX verification retrieved all 2,531 permit IDs and matched the existing snapshot. A 75-permit photo sample (116 submissions, 338 candidate images, 75 selected file versions) returned identical metadata with serial and concurrent retrieval: 21.64 seconds at concurrency 1 versus 10.91 seconds at concurrency 3. These are sample timings, not a full nightly-job benchmark or a comparison against the previous urllib implementation. See `artifacts/httpx-verification.json`.
+
+All permit, detail, attachment and file-version requests share a [Tenacity](https://github.com/jd/tenacity) policy: at most five attempts, exponential jitter (1–30 seconds), a 300-second retry budget and 60-second HTTPX connect/read/write/pool timeouts. HTTPX transport retries are disabled so attempts are governed by a single policy. It retries connection failures/timeouts, interrupted responses, HTTP 408/429 and 5xx responses; it honors numeric or HTTP-date `Retry-After` headers. A delay that would exceed the retry budget causes failure instead of retrying earlier than requested. The budget is checked between attempts, not a hard deadline that interrupts an active request. Retry warnings report the failure class/status, attempt and delay. HTTP 400/401/403/404, certificate verification failures, malformed data and pagination validation failures are not retried. After exhaustion the original exception is raised and the process exits unsuccessfully, suitable for a future GitHub Actions job. This policy retries reads only, including read-only Aura POSTs; it does not provide workflow scheduling or durable execution.
 
 The address cache is already present locally. To regenerate it (or after copying the project without its ignored cache):
 
 ```sh
 curl -sSL --fail 'https://data.sfgov.org/resource/3mea-di5p.json?$limit=250000&$select=address,latitude,longitude,nhood' -o data/sf_addresses.json
-python3 scripts/prepare_data.py
+uv run --locked python scripts/prepare_data.py
 ```
 
 The current address dataset has 224,394 rows. Increase or paginate the address export if it reaches the requested limit. The runtime site does not need the large address cache.
@@ -86,11 +107,11 @@ The current address dataset has 224,394 rows. Increase or paginate the address e
 ## Validation
 
 ```sh
-node --test scripts/test_model.mjs
+npm test
 node --check site/dist/app.mjs
 ```
 
-Tests cover SF timezone handling around UTC midnight and DST, inclusive date boundaries, missing/inverted date intervals, exact Tow Status classification, and keeping unmatched records in totals. Browser checks cover desktop, 375px and 320px phone layouts, status/date/search filters, empty states, details, map location focus, CSV downloads, and responsive overflow. The browser tool `filter_sf_permits` is registered when WebMCP is available and uses the same visible filter state.
+Tests cover SF timezone handling around UTC midnight and DST, inclusive date boundaries, missing/inverted date intervals, exact Tow Status classification, keeping unmatched records in totals, safe photo URLs, attachment pagination, choosing one eligible photo, transient retry recovery, permanent failures, attempt exhaustion, `Retry-After`, concurrent HTTP requests, ordered result merging and resuming unvalidated batches after a failure. Browser checks cover desktop, 375px and 320px phone layouts, status/date/search filters, empty states, details, map location focus, CSV downloads, and responsive overflow. The browser tool `filter_sf_permits` is registered when WebMCP is available and uses the same visible filter state.
 
 ## License
 

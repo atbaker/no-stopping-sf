@@ -55,6 +55,16 @@
   ],
   "detail_fields_fetched": true,
   "scope_note": "All entries in this public list, which has source-side filters on expiration date, phase and requested tow-away rights; not every historical SF parking permit.",
+  "photos": {
+    "fetched_at": "2026-10-05T05:37:41.993037+00:00",
+    "permit_count": 2531,
+    "permits_with_photos": 1048,
+    "image_count": 4362,
+    "complete": true,
+    "method": "Images attached to TOW sign photo submissions linked to the permit. Direct permit attachments and PDFs excluded. Submission metadata identifies purpose, not verified image content or address. Files are hotlinked, not mirrored.",
+    "selected_image_count": 1048,
+    "selection_method": "At most one image per permit: newest upload in TOW sign photo submissions; file ID breaks timestamp ties."
+  },
   "mapped_count": 2417,
   "geocoder_source": "https://data.sfgov.org/d/3mea-di5p",
   "geocoder_method": "Exact normalized address match; address points are not precise tow-zone boundaries.",

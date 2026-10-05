@@ -1,5 +1,6 @@
 import * as maplibregl from '/vendor/maplibre/maplibre-gl.mjs';
 import { sfToday, dateState, filterPermits, summarize } from './model.mjs';
+import { photoUrl, photoSource, photoOriginalUrl } from './photos.mjs';
 const $ = id => document.getElementById(id);
 const form = $('filters'), fields = form.elements;
 const number = n => n.toLocaleString('en-US');
@@ -15,6 +16,15 @@ const PAGE = 24;
 let permits = [], filtered = [], metadata, map, popup, visible = PAGE;
 let groups = new Map(), groupKeyById = new Map();
 const stamp = status => `<span class="stamp ${statusKey(status)}">${escape(status || 'Unknown')}</span>`;
+const photoFor = p => p.photo?.kind==='tow_sign_submission' && photoUrl(p.photo) && photoSource(p.photo) ? p.photo : null;
+function photoMarkup(photo, size) {
+  return `<span class="photo-frame"><img src="${escape(photoUrl(photo,size))}" alt="${escape(photo.title || 'Public permit photo')}" loading="lazy" decoding="async" referrerpolicy="no-referrer"><span class="photo-fallback" hidden>Photo unavailable</span></span>`;
+}
+function handlePhotoErrors(container) {
+  container.querySelectorAll('.photo-frame img').forEach(img => img.addEventListener('error',()=>{
+    img.hidden=true;img.nextElementSibling.hidden=false;
+  },{once:true}));
+}
 
 function getFilters() {
   const when = fields.when.value;
@@ -64,6 +74,7 @@ function renderResults() {
         <span class="mini-dates">${signDate(p.start_date)} – ${signDate(p.end_date)}</span>
         <span class="mini-address">${escape(p.address || 'Address not provided')}</span>
         <span class="mini-meta">${escape(p.neighborhood)} · ${escape(p.type)}</span>
+        ${photoFor(p)?'<span class="mini-photo">Submitted sign photo on file</span>':''}
         ${p.lat===null?'<span class="mini-unmapped">Location not mapped · included in counts</span>':''}
         <span class="mini-rule"></span>
         <span class="mini-permit"><span>${escape(p.number)}</span><span>${escape(p.account || p.phase)}</span></span>
@@ -96,7 +107,8 @@ function openGroup(key) {
   const statuses=[...new Set(group.map(p=>p.tow_status))];
   const el=document.createElement('div'); el.className='map-popup';
   el.innerHTML=`<b>${escape(group[0].address)}</b><small>${number(group.length)} permits at this address · ${escape(statuses.join(' / '))}</small>`+
-    group.map(p=>`<button type="button" data-permit="${escape(p.id)}"><span>${escape(p.number)}</span><span>${escape(p.tow_status)}</span></button>`).join('');
+    group.map(p=>{const photo=photoFor(p);return `<button type="button" class="popup-permit" data-permit="${escape(p.id)}">${photo?photoMarkup(photo,'small'):''}<span><b>${escape(p.number)}</b><span class="popup-status ${statusKey(p.tow_status)}">${escape(p.tow_status)}</span>${photo?'<small>Sign photo · View details</small>':''}</span></button>`;}).join('');
+  handlePhotoErrors(el);
   popup?.remove();
   popup=new maplibregl.Popup({maxWidth:'290px',focusAfterOpen:false}).setLngLat([group[0].lng,group[0].lat]).setDOMContent(el).addTo(map);
 }
@@ -119,6 +131,9 @@ function openDetail(id) {
   const p=permits.find(p=>p.id===id);if(!p)return;
   popup?.remove();
   const info=[['Permit number',p.number],['Permit type',p.type],['Company / permit holder',p.account||'Not provided','wide'],['Phase',p.phase],['Status',p.status],['Permit start',displayDate(p.permit_start_date)],['Permit end',displayDate(p.permit_end_date)],['Expiration',displayDate(p.expiration_date)],['Linear feet',p.linear_feet??'Not provided'],['Number of signs',p.sign_count??'Not provided']];
+  const photo=photoFor(p);
+  const uploaded=photo?.uploaded_at?new Date(photo.uploaded_at).toLocaleDateString('en-US',{timeZone:'America/Los_Angeles',month:'short',day:'numeric',year:'numeric'}):'Date not provided';
+  const gallery=photo?`<a class="photo-card" href="${escape(photoOriginalUrl(photo))}" target="_blank" rel="noopener noreferrer">${photoMarkup(photo,'large')}<span>${escape(photo.title)} ↗ · Uploaded ${escape(uploaded)}</span></a><p class="sheet-note">Most recent image upload for this permit. Contents and location are not independently verified; it may show an earlier posting. <a href="${escape(photoSource(photo))}" target="_blank" rel="noopener noreferrer">Official tow-sign submission ↗</a></p>`:`<p class="sheet-note">${metadata.photos?'No public tow-sign photo uploads found for this permit.':'Tow-sign photos have not been indexed for this snapshot.'}</p>`;
   const size=[p.neighborhood,p.linear_feet?`${number(p.linear_feet)} linear ft`:null,p.sign_count?`${number(p.sign_count)} sign${p.sign_count===1?'':'s'}`:null].filter(Boolean).join(' · ');
   $('detail-body').innerHTML=`
     <div class="sheet-section">
@@ -137,12 +152,17 @@ function openDetail(id) {
       <p class="sheet-note">As reported on the public record when this snapshot was downloaded.</p>
     </div>
     <div class="sheet-section">
+      <p class="sign-label">Posted sign photo:</p>
+      ${gallery}
+    </div>
+    <div class="sheet-section">
       <p class="sign-label">Permit information:</p>
       <dl class="sheet-grid">${info.map(([label,value,wide])=>`<div${wide?' class="wide"':''}><dt>${label}</dt><dd>${escape(value)}</dd></div>`).join('')}</dl>
       ${p.scope?`<p class="sheet-scope">${escape(p.scope)}</p>`:''}
     </div>
     <div class="sheet-foot"><a href="${escape(p.source_url)}" target="_blank" rel="noopener">Open public permit ↗</a>${groupKeyById.has(p.id)&&map?'<button type="button" id="locate">Show on map</button>':''}</div>
     <p class="sheet-fine">${escape(p.location_basis)}. Address points do not show exact curb limits. Always check the posted sign.</p>`;
+  handlePhotoErrors($('detail-body'));
   $('locate')?.addEventListener('click',()=>locate(p));
   $('detail').showModal();
   $('detail').querySelector('.sign-sheet').scrollTop=0;
@@ -151,7 +171,7 @@ function exportFiltered() {
   if(!filtered.length)return;
   const keys=Object.keys(filtered[0]);
   // Spreadsheet-safe strings: prevent public free text from becoming formulas.
-  const cell=value=>{let s=String(value??'');if(typeof value==='string'&&/^[=+\-@\t\r]/.test(s))s="'"+s;return '"'+s.replace(/"/g,'""')+'"';};
+  const cell=value=>{let s=value&&typeof value==='object'?JSON.stringify(value):String(value??'');if(typeof value==='string'&&/^[=+\-@\t\r]/.test(s))s="'"+s;return '"'+s.replace(/"/g,'""')+'"';};
   const blob=new Blob(['﻿'+[keys.map(cell).join(','),...filtered.map(p=>keys.map(k=>cell(p[k])).join(','))].join('\r\n')],{type:'text/csv;charset=utf-8'});
   const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=`sf-permits-${getFilters().date||'all'}-filtered.csv`;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
@@ -246,6 +266,7 @@ async function init() {
     ({permits,metadata}=await response.json());
     $('snapshot-date').textContent='Snapshot · '+new Date(metadata.fetched_at).toLocaleString('en-US',{timeZone:'America/Los_Angeles',month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'})+' PT';
     $('scope-note').textContent=`${number(metadata.record_count)} unique permits downloaded; source count ${number(metadata.source_count)}. ${metadata.scope_note}`;
+    $('photo-note').textContent=metadata.photos?`One submitted tow-sign photo available for each of ${number(metadata.photos.selected_image_count)} permits, selected from ${number(metadata.photos.image_count)} uploads. I choose the newest image upload from TOW sign photo submissions. Index updated ${new Date(metadata.photos.fetched_at).toLocaleString('en-US',{timeZone:'America/Los_Angeles'})} PT. The submission links each upload to its permit’s address; image contents and location are not independently verified. Photos may show an earlier posting and do not determine Tow Status. Direct permit attachments and PDFs are excluded.`:'Tow-sign photo uploads have not been indexed for this snapshot.';
     populate('type',permits.map(p=>p.type));populate('neighborhood',permits.map(p=>p.neighborhood));
     update();registerTools();
   } catch(error){$('error').hidden=false;$('error').textContent=`Could not load the permit snapshot. ${error.message}. Run the data preparation script and reload.`;$('results').innerHTML='<div class="empty">Permit data unavailable.</div>';$('coverage-note').textContent='Data unavailable';return;}

@@ -19,6 +19,10 @@ def normalize(value):
         value = re.sub(r'\b' + original + r'\b', short, value)
     return value
 
+def choose_photo(candidates):
+    eligible = [photo for photo in candidates if photo.get('kind') == 'tow_sign_submission']
+    return max(eligible, key=lambda p: (p.get('uploaded_at') or '', p['id']), default=None)
+
 def main():
     PUBLIC.mkdir(parents=True, exist_ok=True)
     index = {}
@@ -32,7 +36,12 @@ def main():
             elif index[key] is not None and abs(index[key][0] - point[0]) + abs(index[key][1] - point[1]) > .001:
                 index[key] = None  # Ambiguous address: leave unmapped rather than guess.
     permits = []
+    photo_path = DATA / 'permit_photos.json'
+    photo_index = json.loads(photo_path.read_text()) if photo_path.exists() else None
     raw = json.loads((DATA / 'permits_raw.json').read_text())
+    if photo_index and (not photo_index['metadata']['complete'] or
+                        set(photo_index['permits']) != {row['Id'] for row in raw}):
+        raise RuntimeError('Photo index does not match the permit snapshot; refresh photos first')
     for row in raw:
         address = normalize(row.get('Search_Address__c'))
         point = index.get(address)
@@ -56,8 +65,12 @@ def main():
             'neighborhood': point[2] if point else 'Unmapped',
             'location_basis': 'SF EAS address point' if point else 'No exact address match',
             'source_url': 'https://sf-row.my.site.com/s/permit2/' + row['Id'],
+            'photo': choose_photo(photo_index['permits'][row['Id']]) if photo_index else None,
         })
     meta = json.loads((DATA / 'download_metadata.json').read_text())
+    meta['photos'] = {**photo_index['metadata'],
+                      'selected_image_count': sum(p['photo'] is not None for p in permits),
+                      'selection_method': 'At most one image per permit: newest upload in TOW sign photo submissions; file ID breaks timestamp ties.'} if photo_index else None
     meta.update({'mapped_count': sum(p['lat'] is not None for p in permits),
                  'geocoder_source': 'https://data.sfgov.org/d/3mea-di5p',
                  'geocoder_method': 'Exact normalized address match; address points are not precise tow-zone boundaries.',
@@ -69,7 +82,8 @@ def main():
         with destination.open('w', newline='') as f:
             writer = csv.DictWriter(f, fieldnames=list(permits[0]))
             writer.writeheader()
-            writer.writerows({k: "'" + v if isinstance(v, str) and re.match(r'^[=+\-@\t\r]', v) else v for k, v in p.items()} for p in permits)
+            writer.writerows({k: json.dumps(v, separators=(',', ':')) if isinstance(v, (list, dict)) else
+                "'" + v if isinstance(v, str) and re.match(r'^[=+\-@\t\r]', v) else v for k, v in p.items()} for p in permits)
     (PUBLIC / 'metadata.json').write_text(json.dumps(meta, indent=2))
     print(json.dumps({k: meta[k] for k in ['record_count', 'mapped_count', 'tow_status_counts', 'missing_date_count']}, indent=2))
 
