@@ -1,0 +1,14 @@
+[project]
+name = "sf-tow-signs"
+version = "0.1.0"
+description = "Public San Francisco tow-sign permit data and a static map"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.14.8,<3.15"
+dependencies = [
+    "httpx==0.28.1",
+    "tenacity==9.1.2",
+]
+
+[tool.uv]
+package = false

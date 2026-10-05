@@ -2,3 +2,6 @@ __pycache__/
 .DS_Store
 data/sf_addresses.json
 data/permit_details.json
+data/photo_checkpoint.json
+data/photo_files_checkpoint.json
+.venv/

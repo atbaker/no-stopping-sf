@@ -3,17 +3,27 @@
 import argparse
 import csv
 import json
+import logging
 import re
+import ssl
 import time
 import urllib.parse
-import urllib.request
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from pathlib import Path
+
+import httpx
+from tenacity import retry, retry_if_exception, stop_after_attempt, stop_before_delay, wait_random_exponential
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = 'https://sf-row.my.site.com/s/guest-permit-list'
 ENDPOINT = 'https://sf-row.my.site.com/s/sfsites/aura'
 ENTITY = 'MUSW__Permit2__c'
+DEFAULT_CONCURRENCY = 3
+MAX_CONCURRENCY = 8
+_client = None
 LIST_DESCRIPTOR = 'serviceComponent://ui.force.components.controllers.lists.listViewDataManager.ListViewDataManagerController/ACTION$getItems'
 LIST_QUERY_DESCRIPTOR = 'aura://ListUiController/ACTION$postListRecordsByName'
 LIST_FIELDS = ['Id', 'Name', 'LastModifiedDate', 'Search_Address__c', 'Tow_Status__c',
@@ -23,18 +33,86 @@ DETAIL_FIELDS = ['Start_Date__c', 'End_Date_Calculated__c', 'Tow_Away_Start_Date
                  'Tow_Away_End_Date__c', 'MUSW__Issue_Date__c', 'Linear_Feet_Rollup__c',
                  'Total_Number_of_Tow_Signs__c', 'Scope_Description__c', 'Search_Address__c']
 
+def is_transient(error):
+    if isinstance(error, httpx.HTTPStatusError):
+        return error.response.status_code in (408, 429) or 500 <= error.response.status_code < 600
+    cause, seen = error, set()
+    while cause is not None and id(cause) not in seen:
+        if isinstance(cause, ssl.SSLCertVerificationError):
+            return False
+        seen.add(id(cause))
+        cause = cause.__cause__ or cause.__context__
+    return isinstance(error, (httpx.TimeoutException, httpx.NetworkError, httpx.RemoteProtocolError))
+
+
+def new_client():
+    limits = httpx.Limits(max_connections=MAX_CONCURRENCY,
+                          max_keepalive_connections=MAX_CONCURRENCY)
+    return httpx.Client(headers={'User-Agent': 'SF-Tow-Signs/0.1', 'Referer': SOURCE},
+                        timeout=60, follow_redirects=True,
+                        transport=httpx.HTTPTransport(retries=0, limits=limits))
+
+
+@contextmanager
+def client_session():
+    """One thread-safe connection pool for the entire download process."""
+    global _client
+    previous = _client
+    with new_client() as client:
+        _client = client
+        try:
+            yield client
+        finally:
+            _client = previous
+
+
+_backoff = wait_random_exponential(multiplier=1, min=1, max=30)
+
+
+def retry_wait(state):
+    delay = _backoff(state)
+    error = state.outcome.exception()
+    if isinstance(error, httpx.HTTPStatusError):
+        value = error.response.headers.get('Retry-After')
+        if value:
+            try:
+                seconds = float(value)
+            except ValueError:
+                try:
+                    seconds = (parsedate_to_datetime(value) - datetime.now(timezone.utc)).total_seconds()
+                except (ValueError, TypeError, OverflowError):
+                    seconds = 0
+            delay = max(delay, seconds)
+    return delay
+
+
+def log_retry(state):
+    error = state.outcome.exception()
+    label = f'HTTP {error.response.status_code}' if isinstance(error, httpx.HTTPStatusError) else type(error).__name__
+    logging.getLogger(__name__).warning('Public source request failed (%s), attempt %s/5; retrying in %.1fs',
+                                       label, state.attempt_number, state.next_action.sleep)
+
+
+@retry(retry=retry_if_exception(is_transient), wait=retry_wait,
+       stop=stop_after_attempt(5) | stop_before_delay(300), before_sleep=log_retry, reraise=True)
 def request(url, data=None):
-    headers = {'User-Agent': 'SF-Civic-Data-PoC/0.1', 'Referer': SOURCE}
+    headers = {}
     if data is not None:
         headers['Content-Type'] = 'application/x-www-form-urlencoded; charset=UTF-8'
-    for attempt in range(4):
-        try:
-            with urllib.request.urlopen(urllib.request.Request(url, data=data, headers=headers), timeout=60) as response:
-                return response.read().decode()
-        except Exception:
-            if attempt == 3:
-                raise
-            time.sleep(2 ** attempt)
+    # All current requests (including Aura POSTs) only read public data, so
+    # transport retries cannot duplicate a source-side mutation.
+    if _client is None:
+        # Standalone calls own a local client; never publish a temporary pool
+        # that another worker could borrow just before it closes.
+        with new_client() as client:
+            return _request(client, url, data, headers)
+    return _request(_client, url, data, headers)
+
+
+def _request(client, url, data, headers):
+    response = client.request('GET' if data is None else 'POST', url, content=data, headers=headers)
+    response.raise_for_status()
+    return response.text
 
 def bootstrap():
     html = request(SOURCE)
@@ -57,6 +135,16 @@ def call(context, actions):
 
 def action(descriptor, params, i=1):
     return {'id': f'{i};a', 'descriptor': descriptor, 'callingDescriptor': 'UNKNOWN', 'params': params}
+
+
+def call_batches(context, batches, concurrency=DEFAULT_CONCURRENCY):
+    """Fetch one bounded wave, yielding in input order; validation stays on the main thread."""
+    if not 1 <= concurrency <= MAX_CONCURRENCY:
+        raise ValueError(f'Concurrency must be between 1 and {MAX_CONCURRENCY}')
+    if len(batches) > concurrency:
+        raise ValueError('A request wave cannot exceed the concurrency limit')
+    with ThreadPoolExecutor(max_workers=concurrency) as pool:
+        yield from zip(batches, pool.map(lambda batch: call(context, batch), batches))
 
 def list_count(context, list_id):
     response = call(context, [action(LIST_DESCRIPTOR, {'filterName': list_id, 'entityName': ENTITY,
@@ -178,4 +266,5 @@ def main():
     print(json.dumps(meta, indent=2))
 
 if __name__ == '__main__':
-    main()
+    with client_session():
+        main()

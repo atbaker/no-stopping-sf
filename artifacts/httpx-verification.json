@@ -1,0 +1,34 @@
+{
+  "verified_at": "2026-10-05T06:05:18.760008+00:00",
+  "httpx_version": "0.28.1",
+  "permit_list": {
+    "records": 2531,
+    "source_count": 2531,
+    "same_ids_as_snapshot": true,
+    "page_sizes": [
+      500,
+      500,
+      500,
+      500,
+      500,
+      31,
+      0
+    ],
+    "seconds": 19.5
+  },
+  "photos_concurrency_1": {
+    "permits": 75,
+    "submissions": 116,
+    "candidate_images": 338,
+    "selected_versions": 75,
+    "seconds": 21.64
+  },
+  "photos_concurrency_3": {
+    "permits": 75,
+    "submissions": 116,
+    "candidate_images": 338,
+    "selected_versions": 75,
+    "seconds": 10.91
+  },
+  "serial_and_parallel_results_identical": true
+}
