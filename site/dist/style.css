@@ -82,6 +82,27 @@ main{max-width:1240px;margin:auto;padding:0 var(--gutter)}
 .key{display:inline-block;width:12px;height:12px;flex-shrink:0;border-radius:50%}
 .key.no{background:var(--red)}.key.yes{background:var(--ink)}.key.mixed{background:#8a8a8a}
 
+/* Neighborhood rankings: two tight columns, even on phones */
+.hood-cols{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.hood-col h3{margin:0 0 6px;font:800 .75rem/1.2 var(--sans);text-transform:uppercase;letter-spacing:.02em;padding-bottom:6px;border-bottom:3px solid var(--ink)}
+.hood-col:last-child h3{color:var(--red);border-color:var(--red)}
+.hood-col ol{list-style:none;margin:0;padding:0}
+.hood-col li+li{border-top:1px solid var(--line)}
+.hood{display:block;width:100%;text-align:left;background:none;border:0;padding:7px 4px 8px;min-height:44px}
+.hood:hover{background:var(--wash)}
+.hood[aria-pressed="true"]{background:var(--ink);color:#fff}
+.hood-name{display:block;font:700 .8125rem/1.2 var(--sans);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hood-figs{display:flex;align-items:baseline;gap:6px;margin-top:2px}
+.hood-figs b{font:900 1.45rem/1 var(--condensed);letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+.hood-figs span{font-size:.6875rem;color:var(--muted);font-weight:600;white-space:nowrap}
+.hood[aria-pressed="true"] .hood-figs span{color:#ddd}
+.hood-bar{display:block;height:5px;background:#e3e3e3;margin-top:5px}
+.hood-bar i{display:block;height:100%;background:var(--ink)}
+.hood-col:last-child .hood-bar i{background:var(--red)}
+.hood[aria-pressed="true"] .hood-bar{background:#555}.hood[aria-pressed="true"] .hood-bar i{background:#fff}
+.hood-empty{padding:8px 4px;color:var(--muted)}
+.hood-note{margin-top:10px;font-size:.75rem;line-height:1.45;color:var(--muted)}
+
 /* ---------- Map ---------- */
 .workspace{margin-top:4px}
 .map-col{border-top:7px solid var(--red);padding-top:16px}
@@ -217,7 +238,8 @@ dialog[open]{display:flex;align-items:flex-end;justify-content:center}
   .creator-credit{grid-column:1}
   .intro-meta{grid-column:1}
   .unofficial{grid-column:2;grid-row:1/span 4;align-self:start}
-  .filters{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:40px}
+  .filters{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);grid-template-areas:'when where' 'hoods where';column-gap:40px;align-items:start}
+  .when{grid-area:when}.hoods{grid-area:hoods}.where{grid-area:where}
   .panel{margin-top:28px}
   .workspace{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(330px,1fr);gap:32px;align-items:start}
   .map-col{position:sticky;top:16px}
