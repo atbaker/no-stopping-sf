@@ -1,5 +1,5 @@
 import unittest
-from prepare_data import choose_photo
+from prepare_data import build_address_index, choose_photo, normalize
 
 
 class PhotoSelectionTests(unittest.TestCase):
@@ -20,3 +20,18 @@ class PhotoSelectionTests(unittest.TestCase):
         unknown = self.photo('z', None)
         self.assertEqual(choose_photo([second, first, unknown]), second)
         self.assertEqual(choose_photo([unknown, first, second]), second)
+
+
+class AddressIndexTests(unittest.TestCase):
+    def test_groups_by_street_and_delta_encodes_in_number_order(self):
+        index = {normalize('20 Valencia Street'): (37.77001, -122.42201, 'Mission'),
+                 '10 VALENCIA ST': (37.77, -122.422, 'Mission'),
+                 '5 A MARKET ST': (37.79, -122.4, 'SoMa'),
+                 '7 AMBIGUOUS ST': None}
+        built = build_address_index(index)
+        self.assertEqual(sorted(built['streets']), ['A MARKET ST', 'VALENCIA ST'])
+        base_lat, base_lng = built['base']
+        first, second = built['streets']['VALENCIA ST'].split(';')
+        number, dlat, dlng = first.split(',')
+        self.assertEqual((number, int(dlat) + base_lat, int(dlng) + base_lng), ('10', 3777000, -12242200))
+        self.assertEqual(second, '20,1,-1')

@@ -71,7 +71,15 @@
 
       <section class="panel where" aria-labelledby="where-heading">
         <h2 class="sign-label" id="where-heading">Location:</h2>
-        <label class="field search"><span>Search permit address, number or company</span><input id="query" name="query" type="search" placeholder="e.g. 1 Bradford St" autocomplete="off" enterkeyhint="search"></label>
+        <div class="search-wrap">
+          <label class="field search"><span>Search any SF address, permit number or applicant</span><input id="query" name="query" type="search" placeholder="e.g. 2550 Mission St" autocomplete="off" autocapitalize="words" enterkeyhint="search" aria-describedby="search-status" aria-controls="suggestions"></label>
+          <ul class="suggestions" id="suggestions" hidden></ul>
+        </div>
+        <p class="search-status" id="search-status" aria-live="polite"></p>
+        <div class="near-chip" id="near-chip" hidden>
+          <span class="near-label">Map view around <b id="near-address"></b></span>
+          <button type="button" class="near-clear" id="clear-near" aria-label="Clear address search">×</button>
+        </div>
         <fieldset class="segmented" aria-label="Tow status">
           <label><input type="radio" name="tow" value="" checked><span>All</span></label>
           <label><input type="radio" name="tow" value="Not Enforceable"><span>Not enforceable</span></label>

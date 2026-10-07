@@ -9,6 +9,12 @@ export function dateState(p, date) {
   if (date > p.end_date) return 'ended';
   return 'covering';
 }
+// Great-circle distance in meters between two {lat, lng} points.
+export function distanceMeters(a, b) {
+  const rad = Math.PI / 180, dLat = (b.lat - a.lat) * rad, dLng = (b.lng - a.lng) * rad;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLng / 2) ** 2;
+  return 12742000 * Math.asin(Math.sqrt(h));
+}
 export function filterPermits(permits, filters) {
   const query = (filters.query || '').trim().toLowerCase();
   return permits.filter(p =>
@@ -16,7 +22,9 @@ export function filterPermits(permits, filters) {
     (!filters.date || dateState(p, filters.date) === 'covering') &&
     (!filters.tow || p.tow_status === filters.tow) &&
     (!filters.type || p.type === filters.type) &&
-    (!filters.neighborhood || p.neighborhood === filters.neighborhood));
+    (!filters.neighborhood || p.neighborhood === filters.neighborhood) &&
+    (!filters.bounds || (Number.isFinite(p.lat) && Number.isFinite(p.lng) && p.lat >= filters.bounds.south &&
+      p.lat <= filters.bounds.north && p.lng >= filters.bounds.west && p.lng <= filters.bounds.east)));
 }
 export function summarize(permits) {
   return {total: permits.length, enforceable: permits.filter(p=>p.tow_status==='Enforceable').length,

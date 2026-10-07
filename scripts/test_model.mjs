@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {sfToday,dateState,filterPermits,summarize,rankNeighborhoods} from '../site/dist/model.mjs';
+import {sfToday,dateState,filterPermits,summarize,rankNeighborhoods,distanceMeters} from '../site/dist/model.mjs';
 const p={id:'1',address:'1 MAIN ST',number:'SSP-1',account:'Builder',start_date:'2026-10-04',end_date:'2026-10-05',tow_status:'Not Enforceable',type:'Street Space',neighborhood:'Downtown',lat:37.7,lng:-122.4};
 test('today uses SF date around UTC midnight and DST',()=>{
   assert.equal(sfToday(new Date('2026-10-05T02:00:00Z')),'2026-10-04');
@@ -34,4 +34,12 @@ test('neighborhood ranking never repeats a neighborhood across lists',()=>{
   const {top,bottom}=rankNeighborhoods(rows);
   assert.deepEqual(top.map(r=>r.name),['D','C','B']);
   assert.deepEqual(bottom.map(r=>r.name),['A']);
+});
+test('bounds filter keeps mapped permits inside the map view; distance is great-circle',()=>{
+  const home={lat:37.7599,lng:-122.4148};
+  const rows=[{...p,id:'a',lat:37.7599,lng:-122.4148},{...p,id:'b',lat:37.7608,lng:-122.4148},{...p,id:'c',lat:37.7700,lng:-122.4148},{...p,id:'d',lat:null,lng:null}];
+  assert.ok(Math.abs(distanceMeters(home,rows[1])-100)<1);
+  const bounds={south:37.759,north:37.761,west:-122.416,east:-122.414};
+  assert.deepEqual(filterPermits(rows,{bounds}).map(r=>r.id),['a','b']);
+  assert.deepEqual(filterPermits(rows,{bounds:{...bounds,north:37.7600}}).map(r=>r.id),['a']);
 });

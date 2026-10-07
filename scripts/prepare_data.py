@@ -19,6 +19,27 @@ def normalize(value):
         value = re.sub(r'\b' + original + r'\b', short, value)
     return value
 
+# Compact, street-grouped EAS index for the browser's address search. Coordinates are 1e-5 degree
+# integers, delta-encoded along each street (sorted by house number) so the file gzips well.
+ADDRESS_BASE = (3770000, -12244000)
+
+def build_address_index(index):
+    streets = {}
+    for key, point in index.items():
+        match = re.match(r'^(\d+[A-Z]?(?:-\d+[A-Z]?)?) (.+)$', key)
+        if point is None or not match:
+            continue
+        streets.setdefault(match.group(2), []).append((match.group(1), round(point[0] * 1e5), round(point[1] * 1e5)))
+    encoded = {}
+    for street, items in sorted(streets.items()):
+        items.sort(key=lambda item: (int(re.match(r'\d+', item[0]).group()), item[0]))
+        lat, lng, parts = *ADDRESS_BASE, []
+        for number, item_lat, item_lng in items:
+            parts.append(f'{number},{item_lat - lat},{item_lng - lng}')
+            lat, lng = item_lat, item_lng
+        encoded[street] = ';'.join(parts)
+    return {'version': 1, 'base': list(ADDRESS_BASE), 'source': 'https://data.sfgov.org/d/3mea-di5p', 'streets': encoded}
+
 def choose_photo(candidates):
     eligible = [photo for photo in candidates if photo.get('kind') == 'tow_sign_submission']
     return max(eligible, key=lambda p: (p.get('uploaded_at') or '', p['id']), default=None)
@@ -35,6 +56,7 @@ def main():
                 index[key] = point
             elif index[key] is not None and abs(index[key][0] - point[0]) + abs(index[key][1] - point[1]) > .001:
                 index[key] = None  # Ambiguous address: leave unmapped rather than guess.
+    (PUBLIC / 'addresses.json').write_text(json.dumps(build_address_index(index), separators=(',', ':')))
     permits = []
     photo_path = DATA / 'permit_photos.json'
     photo_index = json.loads(photo_path.read_text()) if photo_path.exists() else None
