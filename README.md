@@ -47,6 +47,7 @@ Initial download October 4, 2026 at 7:16 PM Pacific; refreshed and verified with
 - Live verification retrieved exactly the same 2,531 IDs as the original two-way export, with batch sizes 500, 500, 500, 500, 500, 31, 0. Regression tests exercise 5,001 records and reject ignored cursors, omitted records and changing counts. See `artifacts/pagination-verification.json` for the live audit.
 - This is **every entry exposed by this particular public list**, which applies source-side filters on expiration, phase, and requested tow-away rights. It is not a citywide historical permit archive or a count of every physical sign. This includes Street Space, Temporary Occupancy and Sidewalk Repair permits; other SFMTA permit systems are outside this source.
 - Address source: [San Francisco Enterprise Addressing System](https://data.sfgov.org/d/3mea-di5p). Exact matches normalize whitespace, standard street suffixes and leading zeros on ordinal streets. Ambiguous or unmatched addresses remain unmapped; no coordinates are invented. Points locate addresses, not curb-zone boundaries.
+- Address search: typing a house number and street suggests matching EAS addresses entirely in the browser (no third-party geocoder; typed addresses never leave the device). Choosing one centers the map there (about 600 m across the map's narrower side) and lists the permits in the map view, nearest first; panning or zooming updates the results. Queries without a house number search permit addresses, permit numbers and applicants as text.
 
 Files:
 
@@ -59,6 +60,7 @@ Files:
 | `site/dist/data/permits.json` | Frontend snapshot, normalized fields and metadata |
 | `site/dist/data/permits.csv` | Downloadable clean CSV |
 | `site/dist/data/metadata.json` | Public snapshot and geocoding audit |
+| `site/dist/data/addresses.json` | Compact EAS address index for searching any SF address (~0.9 MB gzipped, loaded only on the first address search) |
 
 CSV free-text fields beginning with spreadsheet formula characters receive a leading apostrophe in the clean exports. JSON and raw CSV preserve the original values.
 

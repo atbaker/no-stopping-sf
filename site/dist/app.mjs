@@ -1,5 +1,6 @@
 import * as maplibregl from '/vendor/maplibre/maplibre-gl.mjs';
-import { sfToday, dateState, filterPermits, summarize, rankNeighborhoods } from './model.mjs';
+import { sfToday, dateState, filterPermits, summarize, rankNeighborhoods, distanceMeters } from './model.mjs';
+import { looksLikeAddress, suggestAddresses } from './address.mjs';
 import { photoUrl, photoSource, photoOriginalUrl } from './photos.mjs';
 const $ = id => document.getElementById(id);
 const form = $('filters'), fields = form.elements;
@@ -15,6 +16,21 @@ const RED = '#b71137', INK = '#111111', GRAY = '#8a8a8a';
 const PAGE = 24;
 let permits = [], filtered = [], metadata, map, popup, visible = PAGE;
 let groups = new Map(), groupKeyById = new Map();
+// Address search: the EAS index loads on the first address-like query; `near` is the chosen address point.
+let addressIndex, addressIndexLoad, near = null, nearMarker, suggestions = [], distances = new Map(), renderedSignature, focusKey = '';
+const smooth = () => matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+const formatDistance = meters => meters * 3.28084 < 1000 ? `${Math.max(10, Math.round(meters * 3.28084 / 10) * 10)} ft` : `${(meters / 1609.34).toFixed(1)} mi`;
+// Address search centers the map on the address; results are whatever the map shows. The zoom fits about
+// 600 m across the map's narrower side (a few blocks each way) on any screen size.
+const ADDRESS_VIEW_METERS = 600;
+const addressZoom = lat => {const el=$('map'),px=Math.min(el.clientWidth,el.clientHeight)||360;
+  return Math.min(17,Math.max(14,Math.log2(78271.5*Math.cos(lat*Math.PI/180)*px/ADDRESS_VIEW_METERS)));}; // 512px tiles
+// Without a map (it failed to load), approximate the same view as a box around the address.
+function viewBounds() {
+  if(map) {const b=map.getBounds();return {west:b.getWest(),south:b.getSouth(),east:b.getEast(),north:b.getNorth()};}
+  const dLat=ADDRESS_VIEW_METERS/2/110540, dLng=ADDRESS_VIEW_METERS/2/(111320*Math.cos(near.lat*Math.PI/180));
+  return {west:near.lng-dLng,south:near.lat-dLat,east:near.lng+dLng,north:near.lat+dLat};
+}
 const stamp = status => `<span class="stamp ${statusKey(status)}">${escape(status || 'Unknown')}</span>`;
 const photoFor = p => p.photo?.kind==='tow_sign_submission' && photoUrl(p.photo) && photoSource(p.photo) ? p.photo : null;
 function photoMarkup(photo, size) {
@@ -26,9 +42,17 @@ function handlePhotoErrors(container) {
   },{once:true}));
 }
 
+// An address-like query waiting on a suggestion pick doesn't text-filter; with no address match it falls back to text search.
+function textQuery() {
+  const text=fields.query.value;
+  // addressIndex: undefined = not loaded yet, null = failed to load (fall back to text search).
+  if(near||(looksLikeAddress(text)&&addressIndex!==null&&(!addressIndex||suggestAddresses(addressIndex,text).length)))return '';
+  return text;
+}
 function getFilters() {
   const when = fields.when.value;
-  return {query:fields.query.value,tow:fields.tow.value,type:fields.type.value,neighborhood:fields.neighborhood.value,
+  return {query:textQuery(),bounds:near?viewBounds():null,
+    tow:fields.tow.value,type:fields.type.value,neighborhood:fields.neighborhood.value,
     date:when==='all'?null:when==='today'?sfToday():fields.date.value||sfToday()};
 }
 function populate(id, values) {
@@ -39,15 +63,20 @@ function populate(id, values) {
 }
 function reset() {
   HTMLFormElement.prototype.reset.call(form); $('date').value=sfToday(); $('date-field').hidden=true;
+  near=null; hideSuggestions(); $('search-status').textContent='';
   update(); fit();
 }
 function update() {
   const when = fields.when.value;
   if(when==='date'&&!$('date').value)$('date').value=sfToday();
   const filters = getFilters();
-  filtered = filterPermits(permits, filters).sort((a,b)=>Boolean(!a.address)-Boolean(!b.address) || a.address.localeCompare(b.address,undefined,{numeric:true}) || a.number.localeCompare(b.number));
+  filtered = filterPermits(permits, filters);
+  distances = new Map(near ? filtered.map(p=>[p.id,distanceMeters(p,near)]) : []);
+  filtered.sort(near ? (a,b)=>distances.get(a.id)-distances.get(b.id) || a.number.localeCompare(b.number)
+    : (a,b)=>Boolean(!a.address)-Boolean(!b.address) || a.address.localeCompare(b.address,undefined,{numeric:true}) || a.number.localeCompare(b.number));
+  $('near-chip').hidden=!near; $('near-address').textContent=near?.address??''; $('fit').textContent=near?'Recenter':'Fit results';
   const stats = summarize(filtered);
-  $('tally-when').textContent = filters.date ? (when==='today'?'Today · ':'')+displayDate(filters.date)+' · SF date' : 'Every downloaded permit';
+  $('tally-when').textContent = (filters.date ? (when==='today'?'Today · ':'')+displayDate(filters.date)+' · SF date' : 'Every downloaded permit')+(near?` · map view around ${near.address}`:'');
   $('total').textContent=number(stats.total);
   $('total-caption').textContent = filters.date ? `tow permit${stats.total===1?'':'s'} cover this date` : `tow permit${stats.total===1?'':'s'} in the snapshot`;
   $('count-no').textContent=number(stats.not_enforceable); $('count-yes').textContent=number(stats.enforceable);
@@ -59,7 +88,7 @@ function update() {
   $('unknown-detail').textContent=stats.unknown ? `Reported Tow Status on the public record · ${number(stats.unknown)} with another or unknown status` : 'Reported Tow Status on the public record';
   const missingDates=permits.filter(p=>dateState(p,sfToday())==='unknown').length;
   const fallbacks=filtered.filter(p=>p.date_basis!=='Tow-away dates').length;
-  $('coverage-note').textContent=`${number(stats.total)} matching · ${number(stats.mapped)} mapped · ${number(stats.total-stats.mapped)} without an exact address match`+
+  $('coverage-note').textContent=(near?`Map view around ${near.address}, nearest first · `:'')+`${number(stats.total)} matching · ${number(stats.mapped)} mapped · ${number(stats.total-stats.mapped)} without an exact address match`+
     (filters.date&&missingDates?` · ${number(missingDates)} with unknown dates excluded`:'')+
     (fallbacks?` · ${number(fallbacks)} use permit dates as a fallback`:'');
   $('result-count').textContent=number(stats.total);
@@ -89,13 +118,15 @@ function renderResults() {
         <span class="mini-dates">${signDate(p.start_date)} – ${signDate(p.end_date)}</span>
         <span class="mini-address">${escape(p.address || 'Address not provided')}</span>
         <span class="mini-meta">${escape(p.neighborhood)} · ${escape(p.type)}</span>
+        ${distances.has(p.id)?`<span class="mini-distance">${formatDistance(distances.get(p.id))} away</span>`:''}
         ${photoFor(p)?'<span class="mini-photo">Submitted sign photo on file</span>':''}
         ${p.lat===null?'<span class="mini-unmapped">Location not mapped · included in counts</span>':''}
         <span class="mini-rule"></span>
         <span class="mini-permit"><span>${escape(p.number)}</span><span>${escape(p.account || p.phase)}</span></span>
       </span>
     </button>`).join(''):
-    '<div class="empty">No permits match these filters.<br>Try another date or reset the filters.</div>';
+    (near?`<div class="empty">No tow permits in the map view around ${escape(near.address)} match these filters.<br>Zoom the map out or try another date.</div>`
+      :'<div class="empty">No permits match these filters.<br>Try another date or reset the filters.</div>');
   $('more').hidden=visible>=filtered.length;
   $('more').textContent=`Show more · ${number(Math.max(0,filtered.length-visible))} remaining`;
 }
@@ -108,14 +139,47 @@ function renderMap() {
     groups.get(key).push(p); groupKeyById.set(p.id,key);
   }
   if (!map?.getSource('permits')) return;
-  popup?.remove();
-  map.getSource('permits').setData({type:'FeatureCollection',features:[...groups].map(([key,group])=>{
+  if(near){nearMarker??=new maplibregl.Marker({element:Object.assign(document.createElement('div'),{className:'near-pin'})});nearMarker.setLngLat([near.lng,near.lat]).addTo(map);}
+  else nearMarker?.remove();
+  const features=[...groups].map(([key,group])=>{
     const statuses=new Set(group.map(p=>statusKey(p.tow_status)));
     return {type:'Feature',geometry:{type:'Point',coordinates:[group[0].lng,group[0].lat]},
       properties:{key,count:group.length,status:statuses.size===1?[...statuses][0]:'mixed'}};
-  })});
-  map.setFilter('permit-focus',['==',['get','key'],'']);
+  });
+  // Panning in address mode re-runs update(); skip redraws (which close popups) when nothing visible changed.
+  const signature=features.map(f=>f.properties.key+f.properties.status+f.properties.count).join('|');
+  if(signature===renderedSignature)return;
+  renderedSignature=signature;
+  popup?.remove();
+  map.getSource('permits').setData({type:'FeatureCollection',features});
+  if(!groups.has(focusKey))focusKey='';
+  map.setFilter('permit-focus',['==',['get','key'],focusKey]);
 }
+const loadAddresses=()=>addressIndexLoad??=fetch('/data/addresses.json').then(r=>{if(!r.ok)throw new Error(r.status);return r.json();})
+  .catch(error=>{addressIndexLoad=null;throw error;});
+function hideSuggestions() { suggestions=[]; $('suggestions').hidden=true; $('suggestions').innerHTML=''; }
+async function showSuggestions() {
+  const text=$('query').value;
+  if(near||!looksLikeAddress(text)){hideSuggestions();$('search-status').textContent='';return;}
+  if(!addressIndex){
+    $('search-status').textContent='Loading SF addresses…';
+    try{addressIndex=await loadAddresses();}catch{$('search-status').textContent='Address lookup is unavailable right now. Showing permits whose details match instead.';addressIndex=null;update();fit();return;}
+    if($('query').value!==text||near)return;
+  }
+  suggestions=suggestAddresses(addressIndex,text);
+  $('search-status').textContent=suggestions.length?'':`No SF address matches “${text}”. Showing permits whose details match instead.`;
+  if(!suggestions.length){update();fit();}
+  $('suggestions').innerHTML=`<li class="suggestions-hint">Pick an address to see tow permits nearby</li>`+suggestions.map((a,i)=>`<li><button type="button" data-suggestion="${i}">${escape(a.address)}${a.exact?'':'<small>Closest address on file</small>'}</button></li>`).join('');
+  $('suggestions').hidden=!suggestions.length;
+}
+function selectAddress(address) {
+  near=address; $('query').value=address.address; fields.neighborhood.value='';
+  hideSuggestions(); $('search-status').textContent='';
+  map?.jumpTo({center:[near.lng,near.lat],zoom:addressZoom(near.lat)});
+  update();
+  document.querySelector('.map-col').scrollIntoView({behavior:smooth(),block:'start'});
+}
+function clearNear() { near=null; $('query').value=''; update(); fit(); }
 function openGroup(key) {
   const group=groups.get(key); if(!group)return;
   if(group.length===1)return openDetail(group[0].id);
@@ -129,17 +193,18 @@ function openGroup(key) {
 }
 function fit() {
   if (!map) return;
+  const bounds=new maplibregl.LngLatBounds();
+  if(near)return map.easeTo({center:[near.lng,near.lat],zoom:addressZoom(near.lat)}); // moveend re-runs update()
   const points=filtered.filter(p=>Number.isFinite(p.lat)&&Number.isFinite(p.lng));
   if(!points.length)return;
-  const bounds=new maplibregl.LngLatBounds();
   for(const p of points)bounds.extend([p.lng,p.lat]);
   map.fitBounds(bounds,{padding:36,maxZoom:15,duration:map.loaded()?600:0});
 }
 function locate(p) {
   $('detail').close();
   const key=groupKeyById.get(p.id); if(!map||!key)return;
-  map.setFilter('permit-focus',['==',['get','key'],key]);
-  $('map').scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'center'});
+  focusKey=key; map.setFilter('permit-focus',['==',['get','key'],key]);
+  $('map').scrollIntoView({behavior:smooth(),block:'center'});
   map.flyTo({center:[p.lng,p.lat],zoom:17});
 }
 function openDetail(id) {
@@ -238,7 +303,9 @@ async function initMap() {
   map.on('mouseenter','permit-hit',()=>{map.getCanvas().style.cursor='pointer';});
   map.on('mouseleave','permit-hit',()=>{map.getCanvas().style.cursor='';});
   new ResizeObserver(()=>map.resize()).observe($('map'));
-  renderMap();fit();
+  map.on('moveend',()=>{if(near)update();});
+  if(near)map.jumpTo({center:[near.lng,near.lat],zoom:addressZoom(near.lat)});
+  renderMap();if(near)update();else fit();
 }
 function registerTools() {
   if(!document.modelContext?.registerTool)return;
@@ -267,14 +334,31 @@ async function init() {
   form.addEventListener('change',event=>{
     if(event.target.name==='query')return;
     $('date-field').hidden=fields.when.value!=='date';update();
-    if(event.target.name!=='when'||fields.when.value!=='date')fit();
+    if(!near&&(event.target.name!=='when'||fields.when.value!=='date'))fit();
   });
-  let debounce;$('query').addEventListener('input',()=>{clearTimeout(debounce);debounce=setTimeout(()=>{update();fit();},150);});
+  let debounce;$('query').addEventListener('input',()=>{
+    if(near&&$('query').value!==near.address)near=null; // editing the address leaves nearby mode
+    clearTimeout(debounce);debounce=setTimeout(()=>{update();fit();showSuggestions();},150);
+  });
+  $('query').addEventListener('keydown',event=>{
+    if(event.key==='Enter'&&suggestions.length){event.preventDefault();selectAddress(suggestions[0]);}
+    else if(event.key==='ArrowDown'&&suggestions.length){event.preventDefault();$('suggestions').querySelector('button').focus();}
+    else if(event.key==='Escape')hideSuggestions();
+  });
+  $('suggestions').addEventListener('click',event=>{const button=event.target.closest('[data-suggestion]');if(button)selectAddress(suggestions[button.dataset.suggestion]);});
+  $('suggestions').addEventListener('keydown',event=>{
+    const items=[...$('suggestions').querySelectorAll('button')],i=items.indexOf(document.activeElement);
+    if(event.key==='ArrowDown'||event.key==='ArrowUp'){event.preventDefault();(items[i+(event.key==='ArrowDown'?1:-1)]??$('query')).focus();}
+    else if(event.key==='Escape'){hideSuggestions();$('query').focus();}
+  });
+  document.addEventListener('click',event=>{if(!event.target.closest('.search-wrap'))hideSuggestions();});
+  $('clear-near').addEventListener('click',()=>{clearNear();$('query').focus();});
   $('hood-ranks').addEventListener('click',event=>{
     const button=event.target.closest('[data-hood]');if(!button)return;
     fields.neighborhood.value=fields.neighborhood.value===button.dataset.hood?'':button.dataset.hood;
+    if(near){near=null;$('query').value='';}
     update();fit();
-    if(fields.neighborhood.value)document.querySelector('.map-col').scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'start'});
+    if(fields.neighborhood.value)document.querySelector('.map-col').scrollIntoView({behavior:smooth(),block:'start'});
   });
   $('reset').addEventListener('click',reset);$('fit').addEventListener('click',fit);
   document.addEventListener('click',event=>{const button=event.target.closest('[data-permit]');if(button)openDetail(button.dataset.permit);});

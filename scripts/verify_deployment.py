@@ -15,7 +15,7 @@ from download_permits import ROOT
 def verify(base_url):
     public = ROOT / 'site/dist'
     with httpx.Client(timeout=60, follow_redirects=True, headers={'Accept-Encoding': 'gzip'}) as client:
-        for path in ['index.html', 'app.mjs', 'data/permits.json', 'data/metadata.json', 'data/permits.csv']:
+        for path in ['index.html', 'app.mjs', 'data/permits.json', 'data/metadata.json', 'data/permits.csv', 'data/addresses.json']:
             expected = (public / path).read_bytes()
             digest = hashlib.sha256(expected).hexdigest()
             route = '' if path == 'index.html' else path
