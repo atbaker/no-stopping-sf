@@ -24,3 +24,19 @@ export function summarize(permits) {
     unknown: permits.filter(p=>!['Enforceable','Not Enforceable'].includes(p.tow_status)).length,
     mapped: permits.filter(p=>Number.isFinite(p.lat)&&Number.isFinite(p.lng)).length};
 }
+// Neighborhoods ranked by share of enforceable permits. Small samples and unmapped permits are left out
+// so a neighborhood with one or two permits can't top the list at 0% or 100%.
+export function rankNeighborhoods(permits, {minPermits = 10, count = 3} = {}) {
+  const rows = new Map();
+  for (const p of permits) {
+    if (!p.neighborhood || p.neighborhood === 'Unmapped') continue;
+    const row = rows.get(p.neighborhood) ?? {name:p.neighborhood, total:0, enforceable:0};
+    row.total++; if (p.tow_status === 'Enforceable') row.enforceable++;
+    rows.set(p.neighborhood, row);
+  }
+  const eligible = [...rows.values()].filter(r => r.total >= minPermits).map(r => ({...r, share:r.enforceable/r.total}));
+  const top = [...eligible].sort((a,b) => b.share-a.share || b.total-a.total || a.name.localeCompare(b.name)).slice(0, count);
+  const bottom = [...eligible].sort((a,b) => a.share-b.share || b.total-a.total || a.name.localeCompare(b.name))
+    .filter(r => !top.includes(r)).slice(0, count);
+  return {top, bottom, eligible:eligible.length};
+}

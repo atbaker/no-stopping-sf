@@ -1,5 +1,5 @@
 import * as maplibregl from '/vendor/maplibre/maplibre-gl.mjs';
-import { sfToday, dateState, filterPermits, summarize } from './model.mjs';
+import { sfToday, dateState, filterPermits, summarize, rankNeighborhoods } from './model.mjs';
 import { photoUrl, photoSource, photoOriginalUrl } from './photos.mjs';
 const $ = id => document.getElementById(id);
 const form = $('filters'), fields = form.elements;
@@ -64,7 +64,22 @@ function update() {
     (fallbacks?` · ${number(fallbacks)} use permit dates as a fallback`:'');
   $('result-count').textContent=number(stats.total);
   $('mapped-label').textContent=`${number(stats.mapped)} of ${number(stats.total)} permits mapped`;
-  visible=PAGE; renderResults(); renderMap();
+  visible=PAGE; renderResults(); renderMap(); renderHoods(filters.date);
+}
+// Rankings follow the date choice only; other filters would collapse them to a single neighborhood.
+function renderHoods(date) {
+  const MIN=10, {top,bottom,eligible}=rankNeighborhoods(filterPermits(permits,{date}),{minPermits:MIN});
+  const active=fields.neighborhood.value;
+  const row=r=>`<li><button type="button" class="hood" data-hood="${escape(r.name)}" aria-pressed="${r.name===active}">
+    <span class="hood-name">${escape(r.name)}</span>
+    <span class="hood-figs"><b>${percent(r.enforceable,r.total)}%</b><span>${number(r.enforceable)} of ${number(r.total)}</span></span>
+    <span class="hood-bar" aria-hidden="true"><i style="width:${r.share*100}%"></i></span></button></li>`;
+  $('hoods-top').innerHTML=top.map(row).join('');
+  $('hoods-bottom').innerHTML=bottom.map(row).join('')||'<li class="hood-empty">—</li>';
+  $('hood-ranks').hidden=!eligible;
+  $('hood-note').textContent=eligible
+    ? `Share of each neighborhood’s permits that are enforceable${date?' on this date':''}. Ranks ${number(eligible)} neighborhoods with ${MIN}+ permits. Tap one to filter the map.`
+    : `Not enough permits${date?' on this date':''} to rank neighborhoods (${MIN}+ needed).`;
 }
 function renderResults() {
   $('results').innerHTML=filtered.length ? filtered.slice(0,visible).map(p=>`
@@ -255,6 +270,12 @@ async function init() {
     if(event.target.name!=='when'||fields.when.value!=='date')fit();
   });
   let debounce;$('query').addEventListener('input',()=>{clearTimeout(debounce);debounce=setTimeout(()=>{update();fit();},150);});
+  $('hood-ranks').addEventListener('click',event=>{
+    const button=event.target.closest('[data-hood]');if(!button)return;
+    fields.neighborhood.value=fields.neighborhood.value===button.dataset.hood?'':button.dataset.hood;
+    update();fit();
+    if(fields.neighborhood.value)document.querySelector('.map-col').scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'start'});
+  });
   $('reset').addEventListener('click',reset);$('fit').addEventListener('click',fit);
   document.addEventListener('click',event=>{const button=event.target.closest('[data-permit]');if(button)openDetail(button.dataset.permit);});
   $('more').addEventListener('click',()=>{visible+=PAGE;renderResults();});
