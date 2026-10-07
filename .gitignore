@@ -5,3 +5,6 @@ data/permit_details.json
 data/photo_checkpoint.json
 data/photo_files_checkpoint.json
 .venv/
+node_modules/
+.wrangler/
+data/sf_addresses.json.tmp

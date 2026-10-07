@@ -1,8 +1,8 @@
 # No Stopping SF
 
-Repository: [atbaker/no-stopping-sf](https://github.com/atbaker/no-stopping-sf). Planned domain: `nostoppingsf.io`.
+Repository: [atbaker/no-stopping-sf](https://github.com/atbaker/no-stopping-sf). Production domain: [nostoppingsf.io](https://nostoppingsf.io).
 
-A local, mobile-friendly proof of concept for exploring San Francisco Public Works tow sign permits. Includes a map, address/company/permit search, tow status, permit type, neighborhood and date filters, permit details with public photo attachments, summary counts, and full/filtered CSV export. No deployment or credentials required.
+A mobile-friendly static site for exploring San Francisco Public Works tow sign permits. Includes a map, address/company/permit search, tow status, permit type, neighborhood and date filters, permit details with public photo attachments, summary counts, and full/filtered CSV export. The bundled snapshot runs locally without credentials.
 
 The credit below the page title names the creator, [Andrew Baker](https://x.com/andrewtorkbaker), and links to [Greg Long's post on SF street space permits](https://www.instagram.com/reel/Dd6pwYGB5vG/), which inspired this project. The reel's authorship was verified directly on Instagram; the credit acknowledges inspiration, while the permit counts come from Public Works records.
 
@@ -97,14 +97,37 @@ Live HTTPX verification retrieved all 2,531 permit IDs and matched the existing 
 
 All permit, detail, attachment and file-version requests share a [Tenacity](https://github.com/jd/tenacity) policy: at most five attempts, exponential jitter (1–30 seconds), a 300-second retry budget and 60-second HTTPX connect/read/write/pool timeouts. HTTPX transport retries are disabled so attempts are governed by a single policy. It retries connection failures/timeouts, interrupted responses, HTTP 408/429 and 5xx responses; it honors numeric or HTTP-date `Retry-After` headers. A delay that would exceed the retry budget causes failure instead of retrying earlier than requested. The budget is checked between attempts, not a hard deadline that interrupts an active request. Retry warnings report the failure class/status, attempt and delay. HTTP 400/401/403/404, certificate verification failures, malformed data and pagination validation failures are not retried. After exhaustion the original exception is raised and the process exits unsuccessfully, suitable for a future GitHub Actions job. This policy retries reads only, including read-only Aura POSTs; it does not provide workflow scheduling or durable execution.
 
-The address cache is already present locally. To regenerate it (or after copying the project without its ignored cache):
+`npm run refresh` also downloads the complete Enterprise Addressing System dataset. The address downloader uses the same HTTPX/Tenacity policy, stable Socrata row-ID ordering, 50,000-row pages and an explicit final empty page. It rejects duplicate IDs, missing rows and changes in the independent source count, then atomically replaces the ignored address cache. There is no fixed total-record cap. Equal counts cannot detect every concurrent source edit; this remains a live traversal. The runtime site does not need the address cache.
+
+## Deployment
+
+Cloudflare **Workers Static Assets** serves `site/dist`, with no Worker script or live database. `wrangler.jsonc` binds `nostoppingsf.io` as a custom domain; Wrangler provisions the domain's DNS and certificate. Static asset requests use Cloudflare's CDN, automatic compression and browser revalidation defaults. Missing files return 404, including missing data URLs.
+
+The `Refresh and deploy` GitHub Actions workflow runs on pushes to `main`, manually, and nightly at **10:37 UTC (3:37 AM PDT / 2:37 AM PST)**. GitHub schedules can be delayed. Every deployment checks out current `main`, installs the locked Python dependencies with uv, runs tests, fetches addresses and permits, indexes tow-sign photo metadata, prepares the snapshot, and uploads only `site/dist`. Permit details are cached by source modification date; attachments are re-indexed on every run. Photos stay hotlinked. Runs are serialized, with a 45-minute timeout.
+
+A retrieval or validation failure prevents publication, keeping the previous deployment online. Each successful refresh archives its public data for 14 days; failed runs retain available public metadata and photo checkpoints for seven days. Generated snapshots are published directly, without daily bot commits. After deployment, a smoke check compares the public HTML, JavaScript, JSON and CSV to the files from that run.
+
+Repository secrets required in [GitHub Actions settings](https://github.com/atbaker/no-stopping-sf/settings/secrets/actions):
+
+- `CLOUDFLARE_ACCOUNT_ID`: the account ID in `wrangler.jsonc` (an identifier, not a credential).
+- `CLOUDFLARE_API_TOKEN`: a scoped token with **Account → Workers Scripts → Edit**, plus **Zone → Zone → Read** and **Zone → Workers Routes → Edit** for `nostoppingsf.io`, allowing Wrangler to manage the custom domain. A local `wrangler login` does not configure GitHub's credentials.
+
+For a manual deployment with an authenticated local Wrangler:
 
 ```sh
-curl -sSL --fail 'https://data.sfgov.org/resource/3mea-di5p.json?$limit=250000&$select=address,latitude,longitude,nhood' -o data/sf_addresses.json
-uv run --locked python scripts/prepare_data.py
+npm test
+npm run refresh
+npx wrangler@4.148.0 deploy
+uv run --locked python scripts/verify_deployment.py https://nostoppingsf.io
 ```
 
-The current address dataset has 224,394 rows. Increase or paginate the address export if it reaches the requested limit. The runtime site does not need the large address cache.
+To refresh and publish from GitHub instead:
+
+```sh
+gh workflow run deploy.yml --ref main
+```
+
+Pull requests run the separate `Validate` workflow without Cloudflare secrets, public-source downloads or deployment. Cloudflare configuration stays in the repository; a separate Cloudflare Git integration is unnecessary.
 
 ## Validation
 

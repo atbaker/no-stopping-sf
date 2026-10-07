@@ -5,7 +5,7 @@
   "license": "MIT",
   "scripts": {
     "start": "uv run --locked python scripts/serve.py",
-    "refresh": "uv run --locked python scripts/download_permits.py && uv run --locked python scripts/download_photos.py && uv run --locked python scripts/prepare_data.py",
+    "refresh": "uv run --locked python scripts/download_addresses.py && uv run --locked python scripts/download_permits.py && uv run --locked python scripts/download_photos.py && uv run --locked python scripts/prepare_data.py",
     "test": "node --test scripts/test_*.mjs && uv run --locked python -m unittest discover -s scripts -p 'test_*.py'"
   }
 }
