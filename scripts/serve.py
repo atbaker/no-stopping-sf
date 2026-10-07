@@ -10,7 +10,16 @@ parser.add_argument('--port', type=int, default=3000)
 parser.add_argument('--host', default='127.0.0.1')
 args = parser.parse_args()
 directory = Path(__file__).resolve().parents[1] / 'site/dist'
-handler = partial(SimpleHTTPRequestHandler, directory=str(directory))
+
+
+class RevalidatingHandler(SimpleHTTPRequestHandler):
+    # Match production (Cloudflare sends max-age=0, must-revalidate) so browsers never reuse stale CSS/JS locally.
+    def end_headers(self):
+        self.send_header('Cache-Control', 'public, max-age=0, must-revalidate')
+        super().end_headers()
+
+
+handler = partial(RevalidatingHandler, directory=str(directory))
 server = ThreadingHTTPServer((args.host, args.port), handler)
 print(f'No Stopping SF: http://{args.host}:{args.port}', flush=True)
 try:

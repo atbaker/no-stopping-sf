@@ -257,12 +257,25 @@ dialog[open]{display:flex;align-items:flex-end;justify-content:center}
   .creator-credit{grid-column:1}
   .intro-meta{grid-column:1}
   .unofficial{grid-column:2;grid-row:1/span 4;align-self:start}
-  .filters{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);grid-template-areas:'when where' 'hoods where';column-gap:40px;align-items:start}
+  .filters{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);grid-template-areas:'when hoods' 'where where';column-gap:40px;align-items:start}
   .when{grid-area:when}.hoods{grid-area:hoods}.where{grid-area:where}
+  /* Full-width Location: all controls on one row, notes and the address chip on their own rows */
+  .where{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));column-gap:16px;align-items:end;
+    grid-template-areas:'label label label label' 'search search tow tow' 'hood hood type type' 'status status status status' 'chip chip chip chip' 'foot foot foot foot'}
+  .where>*{margin-top:0}.where .field-row>label,.where .search-status,.where .near-chip,.where .filter-foot{margin-top:12px}
+  .where .segmented span{white-space:nowrap;padding:6px 14px}
+  .where>.sign-label{grid-area:label}.where .search-wrap{grid-area:search}.where .segmented{grid-area:tow;margin-top:0}
+  .where .field-row{display:contents}.where .field-row>label:first-child{grid-area:hood}.where .field-row>label:last-child{grid-area:type}
+  .where .search-status{grid-area:status}.where .near-chip{grid-area:chip}.where .filter-foot{grid-area:foot}
   .panel{margin-top:28px}
   .workspace{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(330px,1fr);gap:32px;align-items:start}
   .map-col{position:sticky;top:16px}
   #map{height:calc(100vh - 140px);max-height:760px}
   .list-col{margin-top:0;padding-top:12px}
   .results{grid-template-columns:1fr}
+}
+@media (min-width:1200px){
+  .where{grid-template-columns:minmax(0,1.6fr) max-content minmax(0,1fr) minmax(0,1fr);
+    grid-template-areas:'label label label label' 'search tow hood type' 'status status status status' 'chip chip chip chip' 'foot foot foot foot'}
+  .where .field-row>label{margin-top:0}
 }
