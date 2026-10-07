@@ -48,7 +48,7 @@ def is_transient(error):
 def new_client():
     limits = httpx.Limits(max_connections=MAX_CONCURRENCY,
                           max_keepalive_connections=MAX_CONCURRENCY)
-    return httpx.Client(headers={'User-Agent': 'SF-Tow-Signs/0.1', 'Referer': SOURCE},
+    return httpx.Client(headers={'User-Agent': 'No-Stopping-SF/0.1', 'Referer': SOURCE},
                         timeout=60, follow_redirects=True,
                         transport=httpx.HTTPTransport(retries=0, limits=limits))
 

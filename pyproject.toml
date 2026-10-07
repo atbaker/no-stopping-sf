@@ -1,5 +1,5 @@
 [project]
-name = "sf-tow-signs"
+name = "no-stopping-sf"
 version = "0.1.0"
 description = "Public San Francisco tow-sign permit data and a static map"
 readme = "README.md"

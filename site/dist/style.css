@@ -23,13 +23,7 @@ button{cursor:pointer}
 .lockup-solid{color:#fff;padding:.06em .14em .02em 0}
 .lockup-box{flex:1;background:#fff;color:var(--red);padding:.06em .1em .02em .12em;display:flex;align-items:baseline;white-space:nowrap}
 .sign-head .lockup{font-size:13.6cqi}
-.qmarks{display:inline-flex;width:1.6em}
-.qmarks i{font-style:normal;animation:qmark 2.4s steps(1,end) infinite}
-.qmarks i:nth-child(2){animation-name:qmark2}.qmarks i:nth-child(3){animation-name:qmark3}
-@keyframes qmark{0%,100%{opacity:1}}
-@keyframes qmark2{0%{opacity:0}33.33%{opacity:1}}
-@keyframes qmark3{0%{opacity:0}66.66%{opacity:1}}
-@media (prefers-reduced-motion:reduce){.qmarks i{animation:none}.qmarks i:nth-child(n+2){opacity:0}}
+.lockup-sf{font-size:.55em;margin-left:auto;padding-left:.25em;letter-spacing:0}
 
 /* ---------- Intro ---------- */
 main{max-width:1240px;margin:auto;padding:0 var(--gutter)}

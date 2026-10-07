@@ -12,7 +12,7 @@ args = parser.parse_args()
 directory = Path(__file__).resolve().parents[1] / 'site/dist'
 handler = partial(SimpleHTTPRequestHandler, directory=str(directory))
 server = ThreadingHTTPServer((args.host, args.port), handler)
-print(f'SF Civic Data: http://{args.host}:{args.port}', flush=True)
+print(f'No Stopping SF: http://{args.host}:{args.port}', flush=True)
 try:
     server.serve_forever()
 except KeyboardInterrupt:
