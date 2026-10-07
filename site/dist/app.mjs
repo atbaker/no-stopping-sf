@@ -173,7 +173,7 @@ function exportFiltered() {
   // Spreadsheet-safe strings: prevent public free text from becoming formulas.
   const cell=value=>{let s=value&&typeof value==='object'?JSON.stringify(value):String(value??'');if(typeof value==='string'&&/^[=+\-@\t\r]/.test(s))s="'"+s;return '"'+s.replace(/"/g,'""')+'"';};
   const blob=new Blob(['﻿'+[keys.map(cell).join(','),...filtered.map(p=>keys.map(k=>cell(p[k])).join(','))].join('\r\n')],{type:'text/csv;charset=utf-8'});
-  const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=`sf-permits-${getFilters().date||'all'}-filtered.csv`;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+  const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=`no-stopping-sf-permits-${getFilters().date||'all'}-filtered.csv`;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 // Recolor OpenFreeMap's Positron style into a quiet gray base so red and black permit dots carry the color.
 function restyle(style) {

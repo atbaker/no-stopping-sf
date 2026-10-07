@@ -22,8 +22,9 @@ button{cursor:pointer}
 .lockup{display:flex;align-items:stretch;font-family:var(--condensed);font-weight:800;text-transform:uppercase;line-height:.92;letter-spacing:-.01em;margin-top:.14em}
 .lockup-solid{color:#fff;padding:.06em .14em .02em 0}
 .lockup-box{flex:1;background:#fff;color:var(--red);padding:.06em .1em .02em .12em;display:flex;align-items:baseline;white-space:nowrap}
-.sign-head .lockup{font-size:13.6cqi}
-.lockup-sf{font-size:.55em;margin-left:auto;padding-left:.25em;letter-spacing:0}
+.sign-head .lockup{font-size:14.1cqi}
+.lockup-end{padding:.06em 0 .02em .14em}
+.sign-head .lockup-box{justify-content:center}
 
 /* ---------- Intro ---------- */
 main{max-width:1240px;margin:auto;padding:0 var(--gutter)}
