@@ -5,49 +5,37 @@
   "list_name": "All TOW Sign Permits",
   "list_api_name": "Copy_of_All_TOW_Sign_Permits",
   "pagination_method": "ID keyset; Id > last_seen_id; offset always 0",
-  "fetched_at": "2026-10-05T04:23:49.624855+00:00",
-  "record_count": 2531,
-  "source_count": 2531,
+  "fetched_at": "2026-11-14T19:38:42.082826+00:00",
+  "record_count": 1932,
+  "source_count": 1932,
   "pagination_complete": true,
   "pages": [
     {
       "after_id": null,
       "returned": 500,
-      "next_cursor": "a10Ps00000QrsT7IAJ",
+      "next_cursor": "a10Ps00000TynJkIAJ",
       "offset": 0
     },
     {
-      "after_id": "a10Ps00000QrsT7IAJ",
+      "after_id": "a10Ps00000TynJkIAJ",
       "returned": 500,
-      "next_cursor": "a10Ps00000SnzBtIAJ",
+      "next_cursor": "a10Ps00000W8YenIAF",
       "offset": 0
     },
     {
-      "after_id": "a10Ps00000SnzBtIAJ",
+      "after_id": "a10Ps00000W8YenIAF",
       "returned": 500,
-      "next_cursor": "a10Ps00000TpHSmIAN",
+      "next_cursor": "a10Ps00000XApizIAD",
       "offset": 0
     },
     {
-      "after_id": "a10Ps00000TpHSmIAN",
-      "returned": 500,
-      "next_cursor": "a10Ps00000Ufr2HIAR",
+      "after_id": "a10Ps00000XApizIAD",
+      "returned": 432,
+      "next_cursor": "a10Ps00000YJieTIAT",
       "offset": 0
     },
     {
-      "after_id": "a10Ps00000Ufr2HIAR",
-      "returned": 500,
-      "next_cursor": "a10Ps00000VTAuzIAH",
-      "offset": 0
-    },
-    {
-      "after_id": "a10Ps00000VTAuzIAH",
-      "returned": 31,
-      "next_cursor": "a10Ps00000Vh2HdIAJ",
-      "offset": 0
-    },
-    {
-      "after_id": "a10Ps00000Vh2HdIAJ",
+      "after_id": "a10Ps00000YJieTIAT",
       "returned": 0,
       "next_cursor": null,
       "offset": 0
@@ -55,23 +43,46 @@
   ],
   "detail_fields_fetched": true,
   "scope_note": "All entries in this public list, which has source-side filters on expiration date, phase and requested tow-away rights; not every historical SF parking permit.",
+  "schedules": {
+    "fetched_at": "2026-11-14T19:39:15.272583+00:00",
+    "permit_fetched_at": "2026-11-14T19:38:42.082826+00:00",
+    "permit_count": 1932,
+    "segment_count": 2031,
+    "timezone": "America/Los_Angeles",
+    "coverage_by_permit_type": {
+      "Street Space": {
+        "complete": 1662,
+        "needs_verification": 147,
+        "unavailable": 4
+      },
+      "Sidewalk Repair": {
+        "complete": 37,
+        "needs_verification": 4,
+        "no_tow_signs": 1
+      },
+      "Temporary Occupancy": {
+        "complete": 69,
+        "needs_verification": 8
+      }
+    }
+  },
   "photos": {
-    "fetched_at": "2026-10-05T05:37:41.993037+00:00",
-    "permit_count": 2531,
-    "permits_with_photos": 1048,
-    "image_count": 4362,
+    "fetched_at": "2026-11-14T19:41:41.103745+00:00",
+    "permit_count": 1932,
+    "permits_with_photos": 810,
+    "image_count": 3313,
     "complete": true,
+    "selected_image_count": 810,
     "method": "Images attached to TOW sign photo submissions linked to the permit. Direct permit attachments and PDFs excluded. Submission metadata identifies purpose, not verified image content or address. Files are hotlinked, not mirrored.",
-    "selected_image_count": 1048,
     "selection_method": "At most one image per permit: newest upload in TOW sign photo submissions; file ID breaks timestamp ties."
   },
-  "mapped_count": 2417,
+  "mapped_count": 1894,
   "geocoder_source": "https://data.sfgov.org/d/3mea-di5p",
   "geocoder_method": "Exact normalized address match; address points are not precise tow-zone boundaries.",
   "tow_status_counts": {
-    "Not Enforceable": 1889,
-    "Enforceable": 642
+    "Not Enforceable": 1281,
+    "Enforceable": 651
   },
   "missing_date_count": 0,
-  "date_method": "Inclusive tow-away start/end dates, falling back to proposed permit start, permit end, then expiration. Missing or invalid intervals are excluded from date-filtered counts. No time-of-day data is exposed. Tow Status is current at download time; changing the date does not reconstruct historical enforcement."
+  "date_method": "Inclusive tow-away start/end dates, falling back to proposed permit start, permit end, then expiration. Missing or invalid intervals are excluded from date-filtered counts. Listed weekday and hour schedules are shown separately per street segment. Tow Status is current at download time; changing the date does not reconstruct historical enforcement."
 }

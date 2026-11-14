@@ -18,6 +18,7 @@ class DeploymentVerificationTests(unittest.TestCase):
             public = root / 'site/dist'
             (public / 'data').mkdir(parents=True)
             files = {'index.html': b'<title>No Stopping SF</title>', 'app.mjs': b'export {};',
+                     'schedules.mjs': b'export {};',
                      'data/permits.json': b'{"permits":[]}', 'data/metadata.json': b'{}',
                      'data/permits.csv': b'id,number\n', 'data/addresses.json': b'{"streets":{}}'}
             for name, content in files.items():

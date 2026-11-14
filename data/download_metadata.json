@@ -5,49 +5,37 @@
   "list_name": "All TOW Sign Permits",
   "list_api_name": "Copy_of_All_TOW_Sign_Permits",
   "pagination_method": "ID keyset; Id > last_seen_id; offset always 0",
-  "fetched_at": "2026-10-05T04:23:49.624855+00:00",
-  "record_count": 2531,
-  "source_count": 2531,
+  "fetched_at": "2026-11-14T19:38:42.082826+00:00",
+  "record_count": 1932,
+  "source_count": 1932,
   "pagination_complete": true,
   "pages": [
     {
       "after_id": null,
       "returned": 500,
-      "next_cursor": "a10Ps00000QrsT7IAJ",
+      "next_cursor": "a10Ps00000TynJkIAJ",
       "offset": 0
     },
     {
-      "after_id": "a10Ps00000QrsT7IAJ",
+      "after_id": "a10Ps00000TynJkIAJ",
       "returned": 500,
-      "next_cursor": "a10Ps00000SnzBtIAJ",
+      "next_cursor": "a10Ps00000W8YenIAF",
       "offset": 0
     },
     {
-      "after_id": "a10Ps00000SnzBtIAJ",
+      "after_id": "a10Ps00000W8YenIAF",
       "returned": 500,
-      "next_cursor": "a10Ps00000TpHSmIAN",
+      "next_cursor": "a10Ps00000XApizIAD",
       "offset": 0
     },
     {
-      "after_id": "a10Ps00000TpHSmIAN",
-      "returned": 500,
-      "next_cursor": "a10Ps00000Ufr2HIAR",
+      "after_id": "a10Ps00000XApizIAD",
+      "returned": 432,
+      "next_cursor": "a10Ps00000YJieTIAT",
       "offset": 0
     },
     {
-      "after_id": "a10Ps00000Ufr2HIAR",
-      "returned": 500,
-      "next_cursor": "a10Ps00000VTAuzIAH",
-      "offset": 0
-    },
-    {
-      "after_id": "a10Ps00000VTAuzIAH",
-      "returned": 31,
-      "next_cursor": "a10Ps00000Vh2HdIAJ",
-      "offset": 0
-    },
-    {
-      "after_id": "a10Ps00000Vh2HdIAJ",
+      "after_id": "a10Ps00000YJieTIAT",
       "returned": 0,
       "next_cursor": null,
       "offset": 0

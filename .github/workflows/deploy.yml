@@ -74,6 +74,7 @@ jobs:
           name: refresh-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             data/download_metadata.json
+            data/permit_segments.json
             data/permit_photos.json
             data/photo_checkpoint.json
             data/photo_files_checkpoint.json

@@ -2,7 +2,7 @@
 
 Repository: [atbaker/no-stopping-sf](https://github.com/atbaker/no-stopping-sf). Production domain: [nostoppingsf.io](https://nostoppingsf.io).
 
-A mobile-friendly static site for exploring San Francisco Public Works tow sign permits. Includes a map, address/company/permit search, tow status, permit type, neighborhood and date filters, permit details with public photo attachments, summary counts, and full/filtered CSV export. The bundled snapshot runs locally without credentials.
+A mobile-friendly static site for exploring San Francisco Public Works tow sign permits. Includes a map, address/company/permit search, tow status, permit type, neighborhood and date filters, permit details with street segment schedules and public photo attachments, summary counts, and full/filtered CSV export. The bundled snapshot includes schedules and runs locally without credentials.
 
 The credit below the page title names the creator, [Andrew Baker](https://x.com/andrewtorkbaker), and links to [Greg Long's post on SF street space permits](https://www.instagram.com/reel/Dd6pwYGB5vG/), which inspired this project. The reel's authorship was verified directly on Instagram; the credit acknowledges inspiration, while the permit counts come from Public Works records.
 
@@ -28,14 +28,14 @@ The visual design borrows from San Francisco's temporary "Tow-Away No Stopping" 
 
 ## Snapshot
 
-Initial download October 4, 2026 at 7:16 PM Pacific; refreshed and verified with ID keyset pagination at 9:23 PM Pacific. See the snapshot metadata for the current fetch time.
+The table below records the October 4, 2026 launch snapshot. See the snapshot metadata for the current fetch time, permit counts and schedule coverage.
 
 | Scope | Total | Enforceable | Not Enforceable |
 | --- | ---: | ---: | ---: |
 | All downloaded entries | 2,531 | 642 | 1,889 |
 | Tow date range covers October 4 | 1,658 | 642 | 1,016 |
 
-**61.3% of permits covering October 4 report Not Enforceable.** 2,417 of the 2,531 permits (95.5%) match an official city address point. 114 remain unmapped, including 60 with no search address. All stay in CSV, list, and counts; the neighborhood filter labels these `Unmapped`.
+**61.3% of permits covering October 4 reported Not Enforceable in the launch snapshot.** 2,417 of the 2,531 permits (95.5%) match an official city address point. 114 remain unmapped, including 60 with no search address. All stay in CSV, list, and counts; the neighborhood filter labels these `Unmapped`.
 
 ## Data and reproducibility
 
@@ -53,10 +53,11 @@ Files:
 
 | File | Contents |
 | --- | --- |
-| `data/permits.csv` | Clean, map-ready CSV, 2,531 rows |
+| `data/permits.csv` | Clean, map-ready CSV, including listed segment schedules |
 | `data/permits_raw.csv` / `data/permits_raw.json` | Original public Salesforce fields, including selected detail fields |
 | `data/download_metadata.json` | Source count, pagination audit, fetch time and scope |
 | `data/permit_photos.json` | Public image metadata, current file version IDs, source parents and photo index audit |
+| `data/permit_segments.json` | Local refresh cache of public street segment schedule fields and fetch metadata |
 | `site/dist/data/permits.json` | Frontend snapshot, normalized fields and metadata |
 | `site/dist/data/permits.csv` | Downloadable clean CSV |
 | `site/dist/data/metadata.json` | Public snapshot and geocoding audit |
@@ -66,7 +67,7 @@ CSV free-text fields beginning with spreadsheet formula characters receive a lea
 
 ## Public photos
 
-The Files tab contains generated PDFs directly attached to a permit and photo uploads attached to related `TOW Away Sign Photo` submissions. `download_photos.py` follows only those tow-sign submissions. It indexes image file types (JPEG, PNG, GIF, WebP), excludes direct permit attachments, PDFs and other documents, deduplicates files per permit and retrieves `ContentDocument.LatestPublishedVersionId` for the selected images via bulk UI API reads (100 IDs per request). It stores no uploader profile data or original image bytes. The current index has 4,362 candidate uploads across 1,048 permits.
+The Files tab contains generated PDFs directly attached to a permit and photo uploads attached to related `TOW Away Sign Photo` submissions. `download_photos.py` follows only those tow-sign submissions. It indexes image file types (JPEG, PNG, GIF, WebP), excludes direct permit attachments, PDFs and other documents, deduplicates files per permit and retrieves `ContentDocument.LatestPublishedVersionId` for the selected images via bulk UI API reads (100 IDs per request). It stores no uploader profile data or original image bytes. The launch index had 4,362 candidate uploads across 1,048 permits.
 
 Submission lists use the public related-list UI API and follow its next-page tokens. Attachments use `RelatedListViewDataManagerController/ACTION$getItems`; row metadata comes from Aura's `$Record` provider. It follows returned offsets/query locators while checking for repeated pages, missing metadata and parent mismatches. This legacy attachment service has not been demonstrated to support arbitrarily large lists for an individual parent: API errors or a full 500-row page marked final fail the refresh instead of silently publishing that result. The permit list itself still uses the verified ID keyset traversal described above.
 
@@ -78,9 +79,13 @@ Photos are labeled “Submitted tow-sign photo.” The submission links the uplo
 
 ## What “today” means
 
-Today is calculated in `America/Los_Angeles`, independently of the viewer's timezone. Date coverage uses **inclusive `Tow_Away_Start_Date__c` and `Tow_Away_End_Date__c`**. Where absent, it falls back to proposed permit start (`Start_Date__c`), permit end (`End_Date_Calculated__c`), then expiration. The UI identifies fallbacks. Every record in this snapshot has a valid tow-away date range, so no fallback is needed for current counts.
+Today is calculated in `America/Los_Angeles`, independently of the viewer's timezone. Date coverage uses **inclusive `Tow_Away_Start_Date__c` and `Tow_Away_End_Date__c`**. Where absent, it falls back to proposed permit start (`Start_Date__c`), permit end (`End_Date_Calculated__c`), then expiration. The UI identifies fallbacks. The snapshot metadata reports date coverage.
 
-**Tow Status is copied exactly from the public record at download time.** It is not inferred from phase/status or merely from the appearance of a sign. Changing the date selects permits with matching date coverage, but does not reconstruct historical or predict future Tow Status. Hours, weekdays, physical posting conditions and exact curb limits are not represented. See [Public Works street space guidance](https://sfpublicworks.org/services/permits/street-space) for tow sign verification rules.
+**Tow Status is copied exactly from the public record at download time.** Changing the date selects permits with matching date coverage. The permit details show city-listed weekdays and hours in San Francisco time for each related `Street_Segments__r` record, with the block and side of the street where provided. The JSON and CSV exports include `tow_segments`. The snapshot metadata reports schedule coverage by permit type.
+
+A segment shows “24 hours daily” when the city flag, all seven weekdays, and all-day hours agree. Flag conflicts and ambiguous time ranges are marked for verification. The city’s record of whether tow signs are needed is shown separately from missing schedule data. Check posted signs for actual conditions and curb limits. See [Public Works street space guidance](https://sfpublicworks.org/services/permits/street-space) for tow sign verification rules.
+
+The filter model can find permits marked Enforceable that are outside their listed hours with `filterPermits(permits, {tow: 'Enforceable', schedule: 'outside_hours'})`. Pass an `at` Date to evaluate a specific instant. The model uses San Francisco local time and the official inclusive tow-away dates. Listed hour windows include the start and end just before the listed end time. A permit matches `outside_hours` only when at least one segment has a listed schedule and every applicable segment is outside its window. Missing or ambiguous schedules and permits outside their date range have separate states.
 
 ## Refresh
 
@@ -91,7 +96,7 @@ npm run refresh
 
 The first `uv sync --locked` installs the pinned Python if needed and creates `.venv` with the locked dependencies. Use `uv add` / `uv remove` to change dependencies, and include the resulting `pyproject.toml` and `uv.lock` changes together. Update `.python-version` and the supported Python range when adopting a newer stable Python release. All npm commands invoke `uv run --locked`, which refuses to silently change the dependency lockfile.
 
-Run `npm run refresh` for subsequent refreshes, then reload the browser. It downloads permits, indexes photos and prepares the static snapshot. Details for unchanged records use a cache keyed by the source's `LastModifiedDate`. The scripts fail on incomplete pagination, changed source count, repeated IDs, ignored cursor filters, mismatched photo coverage or API failures; the previously prepared site snapshot stays available until preparation succeeds. An interrupted photo run can resume completed stages with `uv run --locked python scripts/download_photos.py --resume`; this is only for the same interrupted snapshot, not normal nightly refreshes.
+Run `npm run refresh` for subsequent refreshes, then reload the browser. It downloads permits, fetches street segment schedules and photo metadata, and prepares the static snapshot. Details for unchanged permits use a cache keyed by `LastModifiedDate`. Segments are read on every run because their schedule can change independently of the parent permit. The scripts fail on incomplete pagination, changed source count, repeated IDs, ignored cursor filters, mismatched photo or segment coverage, or API failures. The previously prepared site snapshot stays available until preparation succeeds. An interrupted photo run can resume completed stages with `uv run --locked python scripts/download_photos.py --resume` for the same interrupted snapshot.
 
 Each download process uses one shared [HTTPX](https://www.python-httpx.org/advanced/clients/) client, reusing connections to Salesforce and closing its pool on exit. Photo submission and attachment pages are fetched in bounded waves of three concurrent requests, each containing up to 25 Salesforce actions. Permit ID cursor pages, detail batches and bulk file-version reads remain sequential. Use `uv run --locked python scripts/download_photos.py --concurrency 1` for serial retrieval; the supported range is 1–8. Results are validated and merged in input order on the main thread. Attachment checkpoints remove a batch only after validation succeeds, keeping other in-flight or unprocessed work pending for resume. Images remain hotlinked; these requests retrieve metadata only.
 
@@ -105,7 +110,7 @@ All permit, detail, attachment and file-version requests share a [Tenacity](http
 
 Cloudflare **Workers Static Assets** serves `site/dist`, with no Worker script or live database. `wrangler.jsonc` binds `nostoppingsf.io` as a custom domain; Wrangler provisions the domain's DNS and certificate. Static asset requests use Cloudflare's CDN, automatic compression and browser revalidation defaults. Missing files return 404, including missing data URLs.
 
-The `Refresh and deploy` GitHub Actions workflow runs on pushes to `main`, manually, and nightly at **10:37 UTC (3:37 AM PDT / 2:37 AM PST)**. GitHub schedules can be delayed. Every deployment checks out current `main`, installs the locked Python dependencies with uv, runs tests, fetches addresses and permits, indexes tow-sign photo metadata, prepares the snapshot, and uploads only `site/dist`. Permit details are cached by source modification date; attachments are re-indexed on every run. Photos stay hotlinked. Runs are serialized, with a 45-minute timeout.
+The `Refresh and deploy` GitHub Actions workflow runs on pushes to `main`, manually, and nightly at **10:37 UTC (3:37 AM PDT / 2:37 AM PST)**. GitHub schedules can be delayed. Every deployment checks out current `main`, installs the locked Python dependencies with uv, runs tests, fetches addresses, permits and street segment schedules, indexes tow-sign photo metadata, prepares the snapshot, and uploads only `site/dist`. Permit details are cached by source modification date; attachments are re-indexed on every run. Photos stay hotlinked. Runs are serialized, with a 45-minute timeout.
 
 A retrieval or validation failure prevents publication, keeping the previous deployment online. Each successful refresh archives its public data for 14 days; failed runs retain available public metadata and photo checkpoints for seven days. Generated snapshots are published directly, without daily bot commits. After deployment, a smoke check compares the public HTML, JavaScript, JSON and CSV to the files from that run.
 

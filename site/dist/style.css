@@ -221,6 +221,12 @@ dialog[open]{display:flex;align-items:flex-end;justify-content:center}
 .sheet-sub{margin-top:6px;font-weight:600;color:var(--muted);font-size:.9375rem}
 .sheet-dates{font:900 clamp(2.3rem,11vw,3.4rem)/1 var(--condensed);letter-spacing:-.02em;font-variant-numeric:tabular-nums}
 .sheet-note{font-size:.8125rem;color:var(--muted);margin-top:6px;line-height:1.45}
+.sheet-schedules{list-style:none;padding:0;margin:6px 0 0}
+.sheet-schedules li{border-top:1px solid #e4e1df;padding:8px 0;overflow-wrap:anywhere}
+.sheet-schedules li:last-child{padding-bottom:0}
+.sheet-schedules span,.sheet-schedules strong{display:block}
+.sheet-schedules span{font-size:.8125rem;color:var(--muted)}
+.sheet-schedules strong{margin-top:2px}
 .sheet-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px 16px;margin-top:6px}
 .sheet-grid dt{font:700 .6875rem/1.2 var(--sans);text-transform:uppercase;color:var(--muted);letter-spacing:.03em}
 .sheet-grid dd{font:700 .9375rem/1.35 var(--sans);margin-top:2px;overflow-wrap:anywhere}

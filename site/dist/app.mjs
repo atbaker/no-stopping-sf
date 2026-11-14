@@ -2,6 +2,7 @@ import * as maplibregl from '/vendor/maplibre/maplibre-gl.mjs';
 import { sfToday, dateState, filterPermits, summarize, rankNeighborhoods, distanceMeters } from './model.mjs';
 import { looksLikeAddress, suggestAddresses } from './address.mjs';
 import { photoUrl, photoSource, photoOriginalUrl } from './photos.mjs';
+import { scheduleText } from './schedules.mjs';
 const $ = id => document.getElementById(id);
 const form = $('filters'), fields = form.elements;
 const number = n => n.toLocaleString('en-US');
@@ -207,6 +208,21 @@ function locate(p) {
   $('map').scrollIntoView({behavior:smooth(),block:'center'});
   map.flyTo({center:[p.lng,p.lat],zoom:17});
 }
+function segmentSchedules(p) {
+  if (!p.tow_segments?.length) {
+    return '<p class="sheet-note">Street segment schedules unavailable for this permit.</p>';
+  }
+  return `<p class="sheet-note">City-listed tow hours in San Francisco time</p>
+    <ul class="sheet-schedules">${p.tow_segments.map(segment => {
+      const side = ['Even', 'Odd'].includes(segment.side) ? `${segment.side}-numbered side` : segment.side;
+      const location = [segment.block || 'Street segment', side].filter(Boolean).join(' · ');
+      const note = segment.status === 'needs_verification'
+        ? `Schedule needs verification. <a href="${escape(p.source_url)}" target="_blank" rel="noopener">Check city record ↗</a>`
+        : segment.status === 'unavailable' ? 'City schedule details are incomplete.' : '';
+      return `<li><span>${escape(location)}</span><strong>${escape(scheduleText(segment))}</strong>
+        ${note ? `<p class="sheet-note">${note}</p>` : ''}</li>`;
+    }).join('')}</ul>`;
+}
 function openDetail(id) {
   const p=permits.find(p=>p.id===id);if(!p)return;
   popup?.remove();
@@ -224,7 +240,8 @@ function openDetail(id) {
     <div class="sheet-section">
       <p class="sign-label">Date &amp; Time:</p>
       <p class="sheet-dates">${signDate(p.tow_start_date||p.start_date)} – ${signDate(p.tow_end_date||p.end_date)}</p>
-      <p class="sheet-note">${escape(p.date_basis)}. Hours and weekdays printed on posted signs aren't in the public data.</p>
+      <p class="sheet-note">${escape(p.date_basis)}</p>
+      ${segmentSchedules(p)}
     </div>
     <div class="sheet-section">
       <p class="sign-label">Tow status:</p>

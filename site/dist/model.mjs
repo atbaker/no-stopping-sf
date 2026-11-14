@@ -1,7 +1,23 @@
-export function sfToday(now = new Date()) {
-  const parts = new Intl.DateTimeFormat('en-US', {timeZone:'America/Los_Angeles',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(now);
+const sfClock = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'America/Los_Angeles',
+  year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short',
+  hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+});
+const weekdays = new Set(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']);
+const clockTime = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
+
+function sfDateTime(now) {
+  const parts = sfClock.formatToParts(now);
   const get = type => parts.find(p => p.type === type).value;
-  return `${get('year')}-${get('month')}-${get('day')}`;
+  return {
+    date: `${get('year')}-${get('month')}-${get('day')}`,
+    weekday: get('weekday'),
+    time: `${get('hour')}:${get('minute')}`,
+  };
+}
+
+export function sfToday(now = new Date()) {
+  return sfDateTime(now).date;
 }
 export function dateState(p, date) {
   if (!p.start_date || !p.end_date || p.start_date > p.end_date) return 'unknown';
@@ -9,6 +25,46 @@ export function dateState(p, date) {
   if (date > p.end_date) return 'ended';
   return 'covering';
 }
+
+function validDate(date) {
+  if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
+  const utc = new Date(date + 'T00:00:00Z');
+  return Number.isFinite(utc.getTime()) && utc.toISOString().slice(0, 10) === date;
+}
+
+function scheduleState(permit, local) {
+  const { tow_start_date: start, tow_end_date: end, tow_segments: segments } = permit;
+  if (!validDate(start) || !validDate(end) || start > end) return 'unknown';
+  if (local.date < start || local.date > end) return 'outside_dates';
+  if (!Array.isArray(segments) || !segments.length) return 'unknown';
+
+  let hasSchedule = false;
+  let hasUnknown = false;
+  for (const segment of segments) {
+    if (segment?.status === 'no_tow_signs') continue;
+    if (segment?.status === 'all_day') return 'within_hours';
+    const { weekdays: days, start_time: from, end_time: to } = segment ?? {};
+    if (segment?.status !== 'listed' || !Array.isArray(days) || !days.length ||
+        !days.every(day => weekdays.has(day)) || typeof from !== 'string' || typeof to !== 'string' ||
+        !clockTime.test(from) || !clockTime.test(to) || from >= to) {
+      hasUnknown = true;
+      continue;
+    }
+    hasSchedule = true;
+    if (days.includes(local.weekday) && local.time >= from && local.time < to) {
+      return 'within_hours';
+    }
+  }
+  if (hasUnknown) return 'unknown';
+  return hasSchedule ? 'outside_hours' : 'no_tow_signs';
+}
+
+// Classify the listed schedule independently of the city's reported Tow Status.
+// "Outside hours" requires an in-range date and all applicable segments to be confidently off.
+export function permitScheduleState(permit, at = new Date()) {
+  return scheduleState(permit, sfDateTime(at));
+}
+
 // Great-circle distance in meters between two {lat, lng} points.
 export function distanceMeters(a, b) {
   const rad = Math.PI / 180, dLat = (b.lat - a.lat) * rad, dLng = (b.lng - a.lng) * rad;
@@ -17,10 +73,12 @@ export function distanceMeters(a, b) {
 }
 export function filterPermits(permits, filters) {
   const query = (filters.query || '').trim().toLowerCase();
+  const local = filters.schedule ? sfDateTime(filters.at ?? new Date()) : null;
   return permits.filter(p =>
     (!query || [p.address,p.number,p.account].some(v => (v || '').toLowerCase().includes(query))) &&
     (!filters.date || dateState(p, filters.date) === 'covering') &&
     (!filters.tow || p.tow_status === filters.tow) &&
+    (!local || scheduleState(p, local) === filters.schedule) &&
     (!filters.type || p.type === filters.type) &&
     (!filters.neighborhood || p.neighborhood === filters.neighborhood) &&
     (!filters.bounds || (Number.isFinite(p.lat) && Number.isFinite(p.lng) && p.lat >= filters.bounds.south &&
