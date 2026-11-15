@@ -459,7 +459,7 @@ async function init() {
     $('scope-note').innerHTML=`<b>Coverage:</b> ${number(metadata.record_count)} permits${metadata.source_count!==metadata.record_count?` (the source list reported ${number(metadata.source_count)})`:''}. ${escape(metadata.scope_note)}`;
     $('photo-note').innerHTML=metadata.photos?`<b>Sign photos:</b> ${number(metadata.photos.selected_image_count)} permits show their newest tow-sign photo submission (${number(metadata.photos.image_count)} uploads indexed ${escape(new Date(metadata.photos.fetched_at).toLocaleDateString('en-US',{timeZone:'America/Los_Angeles',month:'short',day:'numeric',year:'numeric'}))}). I don’t check what a photo shows or where it was taken. It may show an earlier posting and has no effect on Tow Status.`:'<b>Sign photos</b> have not been indexed for this snapshot.';
     const today=summarize(filterPermits(permits,{date:sfToday()}));
-    $('pulse').innerHTML=`<b>${percent(today.not_enforceable,today.total)}%</b> of the ${number(today.total)} tow permits active in SF today aren’t enforceable. <span>Updated ${escape(new Date(metadata.fetched_at).toLocaleDateString('en-US',{timeZone:'America/Los_Angeles',month:'short',day:'numeric'}))}</span>`;
+    $('pulse').innerHTML=`<b>${percent(today.not_enforceable,today.total)}%</b> of the ${number(today.total)} tow permits active in SF today aren’t enforceable. <a href="#about">Learn more</a> <span>Updated ${escape(new Date(metadata.fetched_at).toLocaleDateString('en-US',{timeZone:'America/Los_Angeles',month:'short',day:'numeric'}))}</span>`;
     populate('type',permits.map(p=>p.type));populate('neighborhood',permits.map(p=>p.neighborhood));
     update();registerTools();
     if(autoLocate.get()){
