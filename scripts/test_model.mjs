@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {sfToday,dateState,permitScheduleState,filterPermits,summarize,rankNeighborhoods,distanceMeters} from '../site/dist/model.mjs';
+import {sfToday,dateState,permitScheduleState,filterPermits,summarize,rankNeighborhoods,distanceMeters,nearestPermits} from '../site/dist/model.mjs';
 const p={id:'1',address:'1 MAIN ST',number:'SSP-1',account:'Builder',start_date:'2026-10-04',end_date:'2026-10-05',tow_status:'Not Enforceable',type:'Street Space',neighborhood:'Downtown',lat:37.7,lng:-122.4};
 test('today uses SF date around UTC midnight and DST',()=>{
   assert.equal(sfToday(new Date('2026-10-05T02:00:00Z')),'2026-10-04');
@@ -84,4 +84,9 @@ test('off-hours filter excludes active segments, uncertain schedules and out-of-
     ['overnight', 'unavailable-segment', 'legacy', 'missing-tow-date', 'invalid-date']);
   assert.deepEqual(ids({schedule:'no_tow_signs'}), ['no-tow-signs']);
   assert.deepEqual(ids({schedule:'outside_dates'}), ['expired']);
+});
+test('nearest permits are mapped and sorted by distance',()=>{
+  const rows=[{...p,id:'far',lat:37.8},{...p,id:'near',lat:37.701},{...p,id:'mid',lat:37.71},{...p,id:'x',lat:null}];
+  assert.deepEqual(nearestPermits(rows,{lat:37.7,lng:-122.4},2).map(r=>r.id),['near','mid']);
+  assert.deepEqual(nearestPermits(rows,{lat:37.7,lng:-122.4},5).map(r=>r.id),['near','mid','far']);
 });

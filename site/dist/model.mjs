@@ -106,3 +106,9 @@ export function rankNeighborhoods(permits, {minPermits = 10, count = 3} = {}) {
     .filter(r => !top.includes(r)).slice(0, count);
   return {top, bottom, eligible:eligible.length};
 }
+
+// The `count` mapped permits nearest to `point`, nearest first.
+export function nearestPermits(permits, point, count = 10) {
+  return permits.filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lng))
+    .map(p => ({p, d: distanceMeters(p, point)})).sort((a, b) => a.d - b.d).slice(0, count).map(r => r.p);
+}

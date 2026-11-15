@@ -1,5 +1,5 @@
 import * as maplibregl from '/vendor/maplibre/maplibre-gl.mjs';
-import { sfToday, dateState, filterPermits, summarize, rankNeighborhoods, distanceMeters } from './model.mjs';
+import { sfToday, dateState, filterPermits, summarize, rankNeighborhoods, distanceMeters, nearestPermits } from './model.mjs';
 import { looksLikeAddress, suggestAddresses } from './address.mjs';
 import { photoUrl, photoSource, photoOriginalUrl } from './photos.mjs';
 import { scheduleText } from './schedules.mjs';
@@ -14,10 +14,24 @@ const statusKey = status => status==='Enforceable'?'yes':status==='Not Enforceab
 const percent = (part,total) => total ? Math.round(part/total*100) : 0;
 const STYLE_URL = 'https://tiles.openfreemap.org/styles/positron';
 const RED = '#b71137', INK = '#111111', GRAY = '#8a8a8a';
-const PAGE = 24;
+// Most people browse by map; the card list starts short.
+const PAGE = 3, MORE = 12;
+// The finder's default view: not-enforceable permits covering today. Enforceable permits outside their hours are
+// left out on purpose: drivers can read those signs themselves, so those curbs rarely stay open.
+const DEFAULT_TOW = 'Not Enforceable';
+const KEY_LABELS = {no:'Not enforceable', yes:'Enforceable', unknown:'Unknown status', mixed:'Mixed at one address'};
+// One-time opt-in: after a driver shares their location once, find them automatically on later visits.
+const AUTO_LOCATE = 'nssf.autoLocate';
+const autoLocate = {get(){try{return localStorage.getItem(AUTO_LOCATE)==='1';}catch{return false;}},
+  set(on){try{on?localStorage.setItem(AUTO_LOCATE,'1'):localStorage.removeItem(AUTO_LOCATE);}catch{}$('forget-location').hidden=!on;}};
+const inSF = ({lat,lng}) => lat>37.70&&lat<37.84&&lng>-122.53&&lng<-122.35;
+const NEAREST = 10;
 let permits = [], filtered = [], metadata, map, popup, visible = PAGE;
 let groups = new Map(), groupKeyById = new Map();
-// Address search: the EAS index loads on the first address-like query; `near` is the chosen address point.
+// Address search: the EAS index loads on the first address-like query; `near` is the chosen address point,
+// or the driver's own location ({me:true}) from "Show spots near me".
+// `viewScoped`: once someone pans or zooms, the list and stats follow the visible map area until "Whole city".
+let viewScoped = false;
 let addressIndex, addressIndexLoad, near = null, nearMarker, suggestions = [], distances = new Map(), renderedSignature, focusKey = '';
 const smooth = () => matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
 const formatDistance = meters => meters * 3.28084 < 1000 ? `${Math.max(10, Math.round(meters * 3.28084 / 10) * 10)} ft` : `${(meters / 1609.34).toFixed(1)} mi`;
@@ -33,6 +47,8 @@ function viewBounds() {
   return {west:near.lng-dLng,south:near.lat-dLat,east:near.lng+dLng,north:near.lat+dLat};
 }
 const stamp = status => `<span class="stamp ${statusKey(status)}">${escape(status || 'Unknown')}</span>`;
+// City-listed posted hours across a permit's street segments, deduplicated.
+const hoursText = p => [...new Set((p.tow_segments??[]).filter(s=>['listed','all_day'].includes(s.status)).map(scheduleText))].join(' / ');
 const photoFor = p => p.photo?.kind==='tow_sign_submission' && photoUrl(p.photo) && photoSource(p.photo) ? p.photo : null;
 function photoMarkup(photo, size) {
   return `<span class="photo-frame"><img src="${escape(photoUrl(photo,size))}" alt="${escape(photo.title || 'Public permit photo')}" loading="lazy" decoding="async" referrerpolicy="no-referrer"><span class="photo-fallback" hidden>Photo unavailable</span></span>`;
@@ -52,7 +68,7 @@ function textQuery() {
 }
 function getFilters() {
   const when = fields.when.value;
-  return {query:textQuery(),bounds:near?viewBounds():null,
+  return {query:textQuery(),bounds:near||viewScoped?viewBounds():null,
     tow:fields.tow.value,type:fields.type.value,neighborhood:fields.neighborhood.value,
     date:when==='all'?null:when==='today'?sfToday():fields.date.value||sfToday()};
 }
@@ -64,10 +80,10 @@ function populate(id, values) {
 }
 function reset() {
   HTMLFormElement.prototype.reset.call(form); $('date').value=sfToday(); $('date-field').hidden=true;
-  near=null; hideSuggestions(); $('search-status').textContent='';
+  near=null; viewScoped=false; hideSuggestions(); $('search-status').textContent='';
   update(); fit();
 }
-function update() {
+function update({keepPage=false}={}) {
   const when = fields.when.value;
   if(when==='date'&&!$('date').value)$('date').value=sfToday();
   const filters = getFilters();
@@ -75,9 +91,22 @@ function update() {
   distances = new Map(near ? filtered.map(p=>[p.id,distanceMeters(p,near)]) : []);
   filtered.sort(near ? (a,b)=>distances.get(a.id)-distances.get(b.id) || a.number.localeCompare(b.number)
     : (a,b)=>Boolean(!a.address)-Boolean(!b.address) || a.address.localeCompare(b.address,undefined,{numeric:true}) || a.number.localeCompare(b.number));
-  $('near-chip').hidden=!near; $('near-address').textContent=near?.address??''; $('fit').textContent=near?'Recenter':'Fit results';
+  $('near-chip').hidden=!near; $('near-address').textContent=near?.address??''; $('fit').textContent=near?'Recenter':viewScoped?'Whole city':'Fit results';
+  $('whole-city').hidden=!(near||viewScoped);
+  $('near-prefix').textContent=near?.me?'Spots near':'Map view around';
+  $('near-address').classList.toggle('plain',Boolean(near?.me));
+  $('near-me-label').textContent=near?.me?'Refresh my location':'Show spots near me';
+  const heading={'Not Enforceable':'Tow signs that can’t get you towed','Enforceable':'Enforceable tow permits'}[filters.tow]??'All tow permits';
+  $('as-of').innerHTML=`<b>${heading}</b> <span>${filters.date?(when==='today'?'Active today · ':'Active ')+escape(displayDate(filters.date)):'Every downloaded permit'}</span>`;
+  const shown=new Set(filtered.map(p=>statusKey(p.tow_status)));
+  $('legend-keys').innerHTML=['no','yes','unknown'].filter(k=>shown.has(k)).concat(shown.size>1?['mixed']:[])
+    .map(k=>`<span><i class="key ${k}"></i>${KEY_LABELS[k]}</span>`).join('');
+  const towLabel=fields.tow.value?KEY_LABELS[statusKey(fields.tow.value)]:'All tow statuses';
+  const changed=when!=='today'||fields.tow.value!==DEFAULT_TOW||fields.neighborhood.value||fields.type.value;
+  $('filter-summary').textContent=[when==='today'?'Today':when==='all'?'All dates':displayDate(filters.date),towLabel,fields.neighborhood.value,fields.type.value].filter(Boolean).join(' · ');
+  $('more-filters').classList.toggle('active',Boolean(changed));
   const stats = summarize(filtered);
-  $('tally-when').textContent = (filters.date ? (when==='today'?'Today · ':'')+displayDate(filters.date)+' · SF date' : 'Every downloaded permit')+(near?` · map view around ${near.address}`:'');
+  $('tally-when').textContent = (filters.date ? (when==='today'?'Today · ':'')+displayDate(filters.date)+' · SF date' : 'Every downloaded permit')+(near?` · map view around ${near.address}`:viewScoped?' · current map view':' · whole city');
   $('total').textContent=number(stats.total);
   $('total-caption').textContent = filters.date ? `tow permit${stats.total===1?'':'s'} cover this date` : `tow permit${stats.total===1?'':'s'} in the snapshot`;
   $('count-no').textContent=number(stats.not_enforceable); $('count-yes').textContent=number(stats.enforceable);
@@ -89,12 +118,12 @@ function update() {
   $('unknown-detail').textContent=stats.unknown ? `Reported Tow Status on the public record · ${number(stats.unknown)} with another or unknown status` : 'Reported Tow Status on the public record';
   const missingDates=permits.filter(p=>dateState(p,sfToday())==='unknown').length;
   const fallbacks=filtered.filter(p=>p.date_basis!=='Tow-away dates').length;
-  $('coverage-note').textContent=(near?`Map view around ${near.address}, nearest first · `:'')+`${number(stats.total)} matching · ${number(stats.mapped)} mapped · ${number(stats.total-stats.mapped)} without an exact address match`+
+  $('coverage-note').textContent=(near?`Map view around ${near.address}, nearest first · `:viewScoped?'Current map view · ':'')+`${number(stats.total)} matching · ${number(stats.mapped)} mapped · ${number(stats.total-stats.mapped)} without an exact address match`+
     (filters.date&&missingDates?` · ${number(missingDates)} with unknown dates excluded`:'')+
     (fallbacks?` · ${number(fallbacks)} use permit dates as a fallback`:'');
   $('result-count').textContent=number(stats.total);
   $('mapped-label').textContent=`${number(stats.mapped)} of ${number(stats.total)} permits mapped`;
-  visible=PAGE; renderResults(); renderMap(); renderHoods(filters.date);
+  if(!keepPage)visible=PAGE; renderResults(); renderMap(); renderHoods(filters.date);
 }
 // Rankings follow the date choice only; other filters would collapse them to a single neighborhood.
 function renderHoods(date) {
@@ -119,6 +148,7 @@ function renderResults() {
         <span class="mini-dates">${signDate(p.start_date)} – ${signDate(p.end_date)}</span>
         <span class="mini-address">${escape(p.address || 'Address not provided')}</span>
         <span class="mini-meta">${escape(p.neighborhood)} · ${escape(p.type)}</span>
+        ${hoursText(p)?`<span class="mini-hours">Posted hours: ${escape(hoursText(p))}</span>`:''}
         ${distances.has(p.id)?`<span class="mini-distance">${formatDistance(distances.get(p.id))} away</span>`:''}
         ${photoFor(p)?'<span class="mini-photo">Submitted sign photo on file</span>':''}
         ${p.lat===null?'<span class="mini-unmapped">Location not mapped · included in counts</span>':''}
@@ -126,7 +156,7 @@ function renderResults() {
         <span class="mini-permit"><span>${escape(p.number)}</span><span>${escape(p.account || p.phase)}</span></span>
       </span>
     </button>`).join(''):
-    (near?`<div class="empty">No tow permits in the map view around ${escape(near.address)} match these filters.<br>Zoom the map out or try another date.</div>`
+    (near||viewScoped?`<div class="empty">No tow permits in ${near?'the map view around '+escape(near.address):'this map view'} match these filters.<br>Zoom the map out or try another date.<br><br>No tow permit here usually means only the regular posted parking rules apply.</div>`
       :'<div class="empty">No permits match these filters.<br>Try another date or reset the filters.</div>');
   $('more').hidden=visible>=filtered.length;
   $('more').textContent=`Show more · ${number(Math.max(0,filtered.length-visible))} remaining`;
@@ -140,15 +170,15 @@ function renderMap() {
     groups.get(key).push(p); groupKeyById.set(p.id,key);
   }
   if (!map?.getSource('permits')) return;
-  if(near){nearMarker??=new maplibregl.Marker({element:Object.assign(document.createElement('div'),{className:'near-pin'})});nearMarker.setLngLat([near.lng,near.lat]).addTo(map);}
-  else nearMarker?.remove();
+  nearMarker?.remove();nearMarker=null;
+  if(near){nearMarker=new maplibregl.Marker({element:Object.assign(document.createElement('div'),{className:near.me?'me-pin':'near-pin'})});nearMarker.setLngLat([near.lng,near.lat]).addTo(map);}
   const features=[...groups].map(([key,group])=>{
     const statuses=new Set(group.map(p=>statusKey(p.tow_status)));
     return {type:'Feature',geometry:{type:'Point',coordinates:[group[0].lng,group[0].lat]},
       properties:{key,count:group.length,status:statuses.size===1?[...statuses][0]:'mixed'}};
   });
   // Panning in address mode re-runs update(); skip redraws (which close popups) when nothing visible changed.
-  const signature=features.map(f=>f.properties.key+f.properties.status+f.properties.count).join('|');
+  const signature=(near?`${near.lat},${near.lng}|`:'')+features.map(f=>f.properties.key+f.properties.status+f.properties.count).join('|');
   if(signature===renderedSignature)return;
   renderedSignature=signature;
   popup?.remove();
@@ -174,13 +204,41 @@ async function showSuggestions() {
   $('suggestions').hidden=!suggestions.length;
 }
 function selectAddress(address) {
-  near=address; $('query').value=address.address; fields.neighborhood.value='';
+  near=address; viewScoped=false; setLocateStatus(''); $('query').value=address.address; fields.neighborhood.value='';
   hideSuggestions(); $('search-status').textContent='';
   map?.jumpTo({center:[near.lng,near.lat],zoom:addressZoom(near.lat)});
   update();
   document.querySelector('.map-col').scrollIntoView({behavior:smooth(),block:'start'});
 }
-function clearNear() { near=null; $('query').value=''; update(); fit(); }
+function clearNear() { near=null; viewScoped=false; $('query').value=''; setLocateStatus(''); update(); fit(); }
+function setLocateStatus(text) { $('locate-status').textContent=text; $('locate-status').hidden=!text; }
+// Fit the map to the driver plus the nearest permits matching the current filters (by default, not enforceable today).
+function fitNearMe(animate=true) {
+  const candidates=filterPermits(permits,{...getFilters(),bounds:null});
+  const spots=nearestPermits(candidates,near,NEAREST);
+  if(!map)return update();
+  const bounds=new maplibregl.LngLatBounds([near.lng,near.lat],[near.lng,near.lat]);
+  for(const p of spots)bounds.extend([p.lng,p.lat]);
+  map.fitBounds(bounds,{padding:{top:56,bottom:40,left:40,right:56},maxZoom:17,duration:animate&&map.loaded()?700:0}); // moveend re-runs update()
+}
+function locateMe({auto=false}={}) {
+  if(!navigator.geolocation){setLocateStatus('This browser can’t share its location. Search an address instead.');return;}
+  const button=$('near-me');button.disabled=true;button.classList.add('busy');$('near-me-label').textContent='Finding you…';
+  const done=()=>{button.disabled=false;button.classList.remove('busy');$('near-me-label').textContent=near?.me?'Refresh my location':'Show spots near me';};
+  navigator.geolocation.getCurrentPosition(position=>{
+    done();
+    const point={lat:position.coords.latitude,lng:position.coords.longitude,address:'your location',me:true};
+    autoLocate.set(true);
+    if(!inSF(point)){if(!auto)setLocateStatus('You look to be outside San Francisco. Search an SF address to see spots there.');return;}
+    near=point;viewScoped=false;$('query').value='';fields.neighborhood.value='';hideSuggestions();$('search-status').textContent='';setLocateStatus('');
+    update();fitNearMe(!auto);
+    if(!auto)document.querySelector('.map-col').scrollIntoView({behavior:smooth(),block:'start'});
+  },error=>{
+    done();
+    if(error.code===error.PERMISSION_DENIED){autoLocate.set(false);if(!auto)setLocateStatus('Location access is turned off for this site. Allow it in your browser settings, or search an address instead.');}
+    else if(!auto)setLocateStatus('Couldn’t find your location just now. Try again, or search an address.');
+  },{enableHighAccuracy:true,timeout:15000,maximumAge:60000});
+}
 function openGroup(key) {
   const group=groups.get(key); if(!group)return;
   if(group.length===1)return openDetail(group[0].id);
@@ -195,6 +253,8 @@ function openGroup(key) {
 function fit() {
   if (!map) return;
   const bounds=new maplibregl.LngLatBounds();
+  if(!near&&viewScoped)return clearNear();
+  if(near?.me)return fitNearMe();
   if(near)return map.easeTo({center:[near.lng,near.lat],zoom:addressZoom(near.lat)}); // moveend re-runs update()
   const points=filtered.filter(p=>Number.isFinite(p.lat)&&Number.isFinite(p.lng));
   if(!points.length)return;
@@ -212,7 +272,7 @@ function segmentSchedules(p) {
   if (!p.tow_segments?.length) {
     return '<p class="sheet-note">Street segment schedules unavailable for this permit.</p>';
   }
-  return `<p class="sheet-note">City-listed tow hours in San Francisco time</p>
+  return `<p class="sheet-note">Posted hours as listed by the city, in San Francisco time</p>
     <ul class="sheet-schedules">${p.tow_segments.map(segment => {
       const side = ['Even', 'Odd'].includes(segment.side) ? `${segment.side}-numbered side` : segment.side;
       const location = [segment.block || 'Street segment', side].filter(Boolean).join(' · ');
@@ -301,7 +361,6 @@ async function initMap() {
     maxBounds:[[-122.75,37.6],[-122.15,37.92]],cooperativeGestures:true,dragRotate:false,pitchWithRotate:false,touchPitch:false,attributionControl:{compact:true}});
   map.touchZoomRotate.disableRotation();map.keyboard.disableRotation();
   map.addControl(new maplibregl.NavigationControl({showCompass:false}),'top-right');
-  map.addControl(new maplibregl.GeolocateControl({positionOptions:{enableHighAccuracy:true},fitBoundsOptions:{maxZoom:16}}),'top-right');
   let tileErrors=0;map.on('error',()=>{if(++tileErrors>=3)$('map-error').hidden=false;});
   await map.once('load');
   map.addSource('permits',{type:'geojson',data:{type:'FeatureCollection',features:[]}});
@@ -320,7 +379,10 @@ async function initMap() {
   map.on('mouseenter','permit-hit',()=>{map.getCanvas().style.cursor='pointer';});
   map.on('mouseleave','permit-hit',()=>{map.getCanvas().style.cursor='';});
   new ResizeObserver(()=>map.resize()).observe($('map'));
-  map.on('moveend',()=>{if(near)update();});
+  // A pan or zoom by the user (not a programmatic fit) scopes the list and stats to the visible area.
+  map.on('movestart',event=>{if(event.originalEvent&&!near)viewScoped=true;});
+  map.on('moveend',()=>{if(near||viewScoped)update();});
+  if(near?.me){renderMap();fitNearMe(false);return;}
   if(near)map.jumpTo({center:[near.lng,near.lat],zoom:addressZoom(near.lat)});
   renderMap();if(near)update();else fit();
 }
@@ -350,11 +412,13 @@ async function init() {
   form.addEventListener('submit',event=>event.preventDefault());
   form.addEventListener('change',event=>{
     if(event.target.name==='query')return;
+    if(event.target.name==='neighborhood'&&event.target.value){near=null;viewScoped=false;$('query').value='';setLocateStatus('');}
     $('date-field').hidden=fields.when.value!=='date';update();
-    if(!near&&(event.target.name!=='when'||fields.when.value!=='date'))fit();
+    if(!near&&!viewScoped&&(event.target.name!=='when'||fields.when.value!=='date'))fit();
   });
   let debounce;$('query').addEventListener('input',()=>{
     if(near&&$('query').value!==near.address)near=null; // editing the address leaves nearby mode
+    viewScoped=false; // text search covers the whole city
     clearTimeout(debounce);debounce=setTimeout(()=>{update();fit();showSuggestions();},150);
   });
   $('query').addEventListener('keydown',event=>{
@@ -374,12 +438,17 @@ async function init() {
     const button=event.target.closest('[data-hood]');if(!button)return;
     fields.neighborhood.value=fields.neighborhood.value===button.dataset.hood?'':button.dataset.hood;
     if(near){near=null;$('query').value='';}
-    update();fit();
+    viewScoped=false;update();fit();
     if(fields.neighborhood.value)document.querySelector('.map-col').scrollIntoView({behavior:smooth(),block:'start'});
   });
   $('reset').addEventListener('click',reset);$('fit').addEventListener('click',fit);
+  $('near-me').addEventListener('click',()=>locateMe());
+  $('forget-location').addEventListener('click',()=>autoLocate.set(false));
+  $('whole-city').addEventListener('click',clearNear);
+  // "Today" can roll over while a tab sits in the background.
+  document.addEventListener('visibilitychange',()=>{if(permits.length&&fields.when.value==='today'&&!document.hidden&&!$('detail').open)update({keepPage:true});});
   document.addEventListener('click',event=>{const button=event.target.closest('[data-permit]');if(button)openDetail(button.dataset.permit);});
-  $('more').addEventListener('click',()=>{visible+=PAGE;renderResults();});
+  $('more').addEventListener('click',()=>{visible+=MORE;renderResults();});
   $('export-filtered').addEventListener('click',exportFiltered);
   $('close-detail').addEventListener('click',()=>$('detail').close());
   $('detail').addEventListener('click',event=>{if(event.target===$('detail'))$('detail').close();});
@@ -387,10 +456,18 @@ async function init() {
     const response=await fetch('/data/permits.json');if(!response.ok)throw new Error(`Data download failed (${response.status})`);
     ({permits,metadata}=await response.json());
     $('snapshot-date').textContent='Snapshot · '+new Date(metadata.fetched_at).toLocaleString('en-US',{timeZone:'America/Los_Angeles',month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'})+' PT';
-    $('scope-note').textContent=`${number(metadata.record_count)} unique permits downloaded; source count ${number(metadata.source_count)}. ${metadata.scope_note}`;
-    $('photo-note').textContent=metadata.photos?`One submitted tow-sign photo available for each of ${number(metadata.photos.selected_image_count)} permits, selected from ${number(metadata.photos.image_count)} uploads. I choose the newest image upload from TOW sign photo submissions. Index updated ${new Date(metadata.photos.fetched_at).toLocaleString('en-US',{timeZone:'America/Los_Angeles'})} PT. The submission links each upload to its permit’s address; image contents and location are not independently verified. Photos may show an earlier posting and do not determine Tow Status. Direct permit attachments and PDFs are excluded.`:'Tow-sign photo uploads have not been indexed for this snapshot.';
+    $('scope-note').innerHTML=`<b>Coverage:</b> ${number(metadata.record_count)} permits${metadata.source_count!==metadata.record_count?` (the source list reported ${number(metadata.source_count)})`:''}. ${escape(metadata.scope_note)}`;
+    $('photo-note').innerHTML=metadata.photos?`<b>Sign photos:</b> ${number(metadata.photos.selected_image_count)} permits show their newest tow-sign photo submission (${number(metadata.photos.image_count)} uploads indexed ${escape(new Date(metadata.photos.fetched_at).toLocaleDateString('en-US',{timeZone:'America/Los_Angeles',month:'short',day:'numeric',year:'numeric'}))}). I don’t check what a photo shows or where it was taken. It may show an earlier posting and has no effect on Tow Status.`:'<b>Sign photos</b> have not been indexed for this snapshot.';
+    const today=summarize(filterPermits(permits,{date:sfToday()}));
+    $('pulse').innerHTML=`<b>${percent(today.not_enforceable,today.total)}%</b> of the ${number(today.total)} tow permits active in SF today aren’t enforceable. <span>Updated ${escape(new Date(metadata.fetched_at).toLocaleDateString('en-US',{timeZone:'America/Los_Angeles',month:'short',day:'numeric'}))}</span>`;
     populate('type',permits.map(p=>p.type));populate('neighborhood',permits.map(p=>p.neighborhood));
     update();registerTools();
+    if(autoLocate.get()){
+      $('forget-location').hidden=false;
+      // Skip the lookup only when the browser says access is blocked; "prompt" still asks the driver who opted in.
+      Promise.resolve(navigator.permissions?.query({name:'geolocation'})).catch(()=>null)
+        .then(state=>{if(state?.state==='denied')autoLocate.set(false);else locateMe({auto:true});});
+    }
   } catch(error){$('error').hidden=false;$('error').textContent=`Could not load the permit snapshot. ${error.message}. Run the data preparation script and reload.`;$('results').innerHTML='<div class="empty">Permit data unavailable.</div>';$('coverage-note').textContent='Data unavailable';return;}
   initMap().catch(()=>{$('map-error').hidden=false;});
 }

@@ -14,28 +14,64 @@ button{cursor:pointer}
 .visually-hidden{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 
 /* ---------- Sign header ---------- */
-.sign-head{background:var(--red);color:#fff;padding:max(env(safe-area-inset-top),14px) var(--gutter) 14px}
-.sign-head-inner{max-width:1240px;margin:auto;position:relative;container-type:inline-size}
+.sign-head{background:var(--red);color:#fff;padding:max(env(safe-area-inset-top),10px) var(--gutter) 10px}
+/* Compact sign bar: tow truck and lockup share one row; the tagline wraps under them on phones */
+.sign-head-inner{max-width:1240px;margin:auto;position:relative;display:grid;grid-template-columns:auto 1fr;align-items:center;gap:8px 12px}
+.sign-head .pictogram{display:block;height:clamp(2.2rem,10.5vw,3.1rem);width:auto;aspect-ratio:754/237}
+.sign-head .lockup{font-size:clamp(1.75rem,8.4vw,2.6rem);margin-top:0;justify-self:start}
+.head-tag{grid-column:1/-1}
+.sign-head .lockup-box{flex:0 0 auto}
+.head-tag{font:600 .875rem/1.3 var(--sans);max-width:30em}
+.head-tag b{font-weight:800}
 .sign-head .pictogram{display:block;width:100%;height:auto;aspect-ratio:754/237}
 .kicker{display:flex;justify-content:space-between;gap:12px;font:800 .6875rem/1.3 var(--sans);letter-spacing:.08em;text-transform:uppercase;padding-bottom:8px;margin-bottom:10px;border-bottom:2px solid rgba(255,255,255,.45)}
 .kicker span{font-weight:600;opacity:.9}
 .lockup{display:flex;align-items:stretch;font-family:var(--condensed);font-weight:800;text-transform:uppercase;line-height:.92;letter-spacing:-.01em;margin-top:.14em}
 .lockup-solid{color:#fff;padding:.06em .14em .02em 0}
 .lockup-box{flex:1;background:#fff;color:var(--red);padding:.06em .1em .02em .12em;display:flex;align-items:baseline;white-space:nowrap}
-.sign-head .lockup{font-size:14.1cqi}
 .lockup-end{padding:.06em 0 .02em .14em}
-.sign-head .lockup-box{justify-content:center}
 
 /* ---------- Intro ---------- */
 main{max-width:1240px;margin:auto;padding:0 var(--gutter)}
-.intro{padding:20px 0 6px}
 .intro-lede{font:800 1.5rem/1.2 var(--sans);letter-spacing:-.015em;max-width:34em}
 .intro-sub{margin-top:8px;font:400 1.0625rem/1.5 var(--sans);max-width:34em}
 .creator-credit{margin-top:10px;font-size:.9375rem;line-height:1.5;color:var(--muted)}
 .creator-credit a{color:var(--ink);font-weight:600}
 .intro-meta{display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:14px;font-size:.875rem;color:var(--muted)}
 .intro-meta a{color:var(--red);font-weight:700}
-.unofficial{margin-top:14px;display:inline-block;border:2px solid var(--ink);padding:4px 8px;font:800 .6875rem/1.3 var(--sans);letter-spacing:.06em;text-transform:uppercase}
+
+/* ---------- Finder: near-me, search, filters ---------- */
+.finder{padding-top:14px}
+.locate-button{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:48px;margin:12px 0 3px;background:var(--red);color:#fff;border:0;
+  font:800 1.0625rem/1 var(--condensed);text-transform:uppercase;letter-spacing:.03em;box-shadow:0 3px 0 var(--red-dark)}
+.locate-button svg{width:20px;height:20px;flex-shrink:0}
+.locate-button:hover{background:var(--red-dark)}
+.locate-button:active{transform:translateY(2px);box-shadow:0 1px 0 var(--red-dark)}
+.locate-button.busy svg{animation:spin 1.2s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.locate-status{margin-top:10px;font-size:.875rem;font-weight:600;line-height:1.45;border-left:5px solid var(--ink);padding:4px 0 4px 10px}
+.finder-row{display:block}
+.more-filters{margin-top:12px}
+.pulse{font-size:.9375rem;line-height:1.45;margin-bottom:16px}
+.pulse b{font:900 1.15rem/1 var(--condensed);color:var(--red)}
+.pulse span{color:var(--muted);font-size:.8125rem;font-weight:600;white-space:nowrap}
+.stats-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+.foot-link{display:block;margin-top:8px;padding:0;background:none;border:0;color:inherit;opacity:.75;font:600 .6875rem/1.3 var(--sans);text-decoration:underline;text-underline-offset:3px}
+.foot-link:hover{opacity:1}
+.more-filters{border:3px solid var(--ink)}
+.more-filters summary{display:flex;align-items:center;gap:10px;min-height:46px;padding:6px 12px;cursor:pointer;list-style:none;font:800 .9375rem/1.1 var(--condensed);text-transform:uppercase;letter-spacing:.02em}
+.more-filters summary::-webkit-details-marker{display:none}
+.more-filters summary::after{content:"";margin-left:auto;width:10px;height:10px;border:solid var(--ink);border-width:0 3px 3px 0;transform:rotate(45deg) translateY(-3px);flex-shrink:0}
+.more-filters[open] summary::after{transform:rotate(-135deg) translate(-2px,-2px)}
+.filter-summary{font:600 .8125rem/1.2 var(--sans);text-transform:none;letter-spacing:0;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.more-filters.active .filter-summary{color:var(--red);font-weight:800}
+.more-filters .filters{padding:4px 12px 14px;border-top:2px solid var(--ink)}
+.more-filters .segmented{margin-top:10px}
+.as-of{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 10px;margin-bottom:8px}
+.as-of b{font:800 1.125rem/1.2 var(--condensed);text-transform:uppercase;letter-spacing:.01em}
+.as-of span{font-size:.8125rem;font-weight:600;color:var(--muted)}
+/* The driver's own location: a pulsing dot */
+.me-pin{width:18px;height:18px;border-radius:50%;background:#1769e0;border:3px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.25),0 0 0 8px rgba(23,105,224,.18);pointer-events:none}
 
 /* ---------- Sign-style sections ---------- */
 .panel,.list-col{border-top:7px solid var(--red);padding:12px 0 24px;margin-top:22px}
@@ -56,7 +92,6 @@ main{max-width:1240px;margin:auto;padding:0 var(--gutter)}
 .field select{background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='9' viewBox='0 0 14 9'%3E%3Cpath d='M1 1l6 6 6-6' fill='none' stroke='%23111' stroke-width='3'/%3E%3C/svg%3E") no-repeat right 12px center;padding-right:36px;text-overflow:ellipsis}
 .field input::placeholder{color:#8a8a8a;font-weight:400}
 .date-field{margin-top:12px;max-width:260px}
-.where .segmented{margin-top:14px}
 /* Address search: suggestions drop down over the filters below */
 .search-wrap{position:relative}
 .suggestions{position:absolute;left:0;right:0;top:100%;z-index:5;margin:0;padding:0;list-style:none;background:#fff;border:3px solid var(--ink);border-top:0;box-shadow:0 6px 0 rgba(0,0,0,.12)}
@@ -71,6 +106,7 @@ main{max-width:1240px;margin:auto;padding:0 var(--gutter)}
 .near-chip{display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;margin-top:10px;background:var(--red);color:#fff;padding:7px 6px 7px 12px}
 .near-label{flex:1 1 12em;font:700 .8125rem/1.3 var(--sans)}
 .near-label b{font:800 1rem/1.2 var(--condensed);text-transform:uppercase;letter-spacing:.01em}
+.near-label b.plain{font:700 .9375rem/1.2 var(--sans);text-transform:none;letter-spacing:0}
 .near-clear{width:36px;height:36px;border:2px solid #fff;background:none;color:#fff;font:700 1.4rem/1 var(--sans);padding:0 0 3px;display:grid;place-items:center}
 .near-clear:hover{background:#fff;color:var(--red)}
 /* Hollow so a permit dot at the searched address stays visible and tappable underneath */
@@ -99,7 +135,7 @@ main{max-width:1240px;margin:auto;padding:0 var(--gutter)}
 .split-no b{color:var(--red)}
 .tally-note{margin-top:12px;font-size:.8125rem;color:var(--muted)}
 .key{display:inline-block;width:12px;height:12px;flex-shrink:0;border-radius:50%}
-.key.no{background:var(--red)}.key.yes{background:var(--ink)}.key.mixed{background:#8a8a8a}
+.key.no{background:var(--red)}.key.yes{background:var(--ink)}.key.mixed,.key.unknown{background:#8a8a8a}
 
 /* Neighborhood rankings: two tight columns, even on phones */
 .hood-cols{display:grid;grid-template-columns:1fr 1fr;gap:12px}
@@ -123,14 +159,14 @@ main{max-width:1240px;margin:auto;padding:0 var(--gutter)}
 .hood-note{margin-top:10px;font-size:.75rem;line-height:1.45;color:var(--muted)}
 
 /* ---------- Map ---------- */
-.workspace{margin-top:4px}
-.map-col{border-top:7px solid var(--red);padding-top:16px}
+.workspace{margin-top:18px}
+.map-col{border-top:7px solid var(--red);padding-top:12px}
 .map-frame{position:relative;border:3px solid var(--ink)}
 #map{height:min(58vh,460px);min-height:320px;background:#ededeb}
 .map-fit{position:absolute;left:10px;top:10px;z-index:2;background:#fff;border:3px solid var(--ink);padding:7px 11px;font:800 .8125rem/1 var(--condensed);text-transform:uppercase;letter-spacing:.03em;min-height:40px}
 .map-fit:hover{background:var(--ink);color:#fff}
 .map-error{position:absolute;inset:auto 10px 10px;z-index:2;background:#fff;border:3px solid var(--red);padding:10px 12px;font-size:.8125rem;font-weight:600}
-.legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:10px;font:700 .75rem/1.4 var(--sans);text-transform:uppercase;letter-spacing:.02em}
+.legend,#legend-keys{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:10px;font:700 .75rem/1.4 var(--sans);text-transform:uppercase;letter-spacing:.02em}
 .legend span{display:flex;align-items:center;gap:6px}
 .legend .mapped{color:var(--muted);font-weight:600;text-transform:none;letter-spacing:0;flex-basis:100%}
 .maplibregl-ctrl-group{border-radius:0!important;box-shadow:none!important;border:3px solid var(--ink)}
@@ -163,6 +199,7 @@ main{max-width:1240px;margin:auto;padding:0 var(--gutter)}
 .mini-rule{display:block;height:3px;background:var(--red);margin:10px 0 8px}
 .mini-permit{display:flex;justify-content:space-between;gap:10px;font:700 .75rem/1.4 var(--sans)}
 .mini-permit span:last-child{color:var(--muted);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right}
+.mini-hours{display:block;font:700 .8125rem/1.35 var(--sans);margin-top:6px}
 .mini-unmapped{display:block;font-size:.75rem;color:var(--red);font-weight:700;margin-top:6px}
 .stamp{margin-left:auto;align-self:center;transform:rotate(-3deg);border:3px double currentColor;padding:3px 6px 2px;font:900 .875rem/1 var(--condensed);text-transform:uppercase;letter-spacing:.04em;background:#fff;text-align:center;white-space:nowrap}
 .stamp.no{color:var(--red)}.stamp.yes{color:var(--ink)}.stamp.unknown{color:#666}
@@ -241,7 +278,6 @@ dialog[open]{display:flex;align-items:flex-end;justify-content:center}
 /* ---------- Larger screens ---------- */
 @media (min-width:560px){
   :root{--gutter:24px}
-  .kicker{font-size:.8125rem}
   .results{grid-template-columns:repeat(auto-fill,minmax(250px,1fr))}
   .legend .mapped{flex-basis:auto;margin-left:auto}
   .sign-foot-inner{flex-direction:row;justify-content:space-between}
@@ -254,34 +290,20 @@ dialog[open]{display:flex;align-items:flex-end;justify-content:center}
 }
 @media (min-width:960px){
   :root{--gutter:32px}
-  .sign-head{padding-bottom:22px}
-  .sign-head-inner{max-width:760px}
-  .kicker{margin-bottom:16px}
-  .intro{display:grid;grid-template-columns:1fr auto;gap:4px 40px;align-items:end;padding-top:28px}
-  .intro-lede{font-size:1.9rem;grid-column:1}
-  .intro-sub{grid-column:1}
-  .creator-credit{grid-column:1}
-  .intro-meta{grid-column:1}
-  .unofficial{grid-column:2;grid-row:1/span 4;align-self:start}
-  .filters{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);grid-template-areas:'when hoods' 'where where';column-gap:40px;align-items:start}
-  .when{grid-area:when}.hoods{grid-area:hoods}.where{grid-area:where}
-  /* Full-width Location: all controls on one row, notes and the address chip on their own rows */
-  .where{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));column-gap:16px;align-items:end;
-    grid-template-areas:'label label label label' 'search search tow tow' 'hood hood type type' 'status status status status' 'chip chip chip chip' 'foot foot foot foot'}
-  .where>*{margin-top:0}.where .field-row>label,.where .search-status,.where .near-chip,.where .filter-foot{margin-top:12px}
-  .where .segmented span{white-space:nowrap;padding:6px 14px}
-  .where>.sign-label{grid-area:label}.where .search-wrap{grid-area:search}.where .segmented{grid-area:tow;margin-top:0}
-  .where .field-row{display:contents}.where .field-row>label:first-child{grid-area:hood}.where .field-row>label:last-child{grid-area:type}
-  .where .search-status{grid-area:status}.where .near-chip{grid-area:chip}.where .filter-foot{grid-area:foot}
+  .sign-head-inner{grid-template-columns:auto auto 1fr;column-gap:18px}
+  .sign-head .pictogram{height:3.3rem}
+  .sign-head .lockup{font-size:2.6rem}
+  .head-tag{grid-column:auto;font-size:1rem;justify-self:end;text-align:right;max-width:20em}
+  .finder{padding-top:18px}
+  /* The filter panel drops down over the map instead of pushing it down */
+  .more-filters{position:relative}
+  .more-filters[open] .filters{position:absolute;z-index:6;left:-3px;right:-3px;top:100%;background:#fff;border:3px solid var(--ink);border-top-width:2px;box-shadow:0 8px 0 rgba(0,0,0,.12)}
+  .stats{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);column-gap:40px;align-items:start}
+  .intro-lede{font-size:1.9rem}
   .panel{margin-top:28px}
   .workspace{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(330px,1fr);gap:32px;align-items:start}
   .map-col{position:sticky;top:16px}
   #map{height:calc(100vh - 140px);max-height:760px}
   .list-col{margin-top:0;padding-top:12px}
   .results{grid-template-columns:1fr}
-}
-@media (min-width:1200px){
-  .where{grid-template-columns:minmax(0,1.6fr) max-content minmax(0,1fr) minmax(0,1fr);
-    grid-template-areas:'label label label label' 'search tow hood type' 'status status status status' 'chip chip chip chip' 'foot foot foot foot'}
-  .where .field-row>label{margin-top:0}
 }
