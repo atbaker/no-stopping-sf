@@ -95,7 +95,6 @@ function update({keepPage=false}={}) {
   $('whole-city').hidden=!(near||viewScoped);
   $('near-prefix').textContent=near?.me?'Spots near':'Map view around';
   $('near-address').classList.toggle('plain',Boolean(near?.me));
-  $('near-me-label').textContent=near?.me?'Refresh my location':'Show spots near me';
   const heading={'Not Enforceable':'Tow signs that can’t get you towed','Enforceable':'Enforceable tow permits'}[filters.tow]??'All tow permits';
   $('as-of').innerHTML=`<b>${heading}</b> <span>${filters.date?(when==='today'?'Active today · ':'Active ')+escape(displayDate(filters.date)):'Every downloaded permit'}</span>`;
   const shown=new Set(filtered.map(p=>statusKey(p.tow_status)));
@@ -224,7 +223,7 @@ function fitNearMe(animate=true) {
 function locateMe({auto=false}={}) {
   if(!navigator.geolocation){setLocateStatus('This browser can’t share its location. Search an address instead.');return;}
   const button=$('near-me');button.disabled=true;button.classList.add('busy');$('near-me-label').textContent='Finding you…';
-  const done=()=>{button.disabled=false;button.classList.remove('busy');$('near-me-label').textContent=near?.me?'Refresh my location':'Show spots near me';};
+  const done=()=>{button.disabled=false;button.classList.remove('busy');$('near-me-label').textContent='Show spots near me';};
   navigator.geolocation.getCurrentPosition(position=>{
     done();
     const point={lat:position.coords.latitude,lng:position.coords.longitude,address:'your location',me:true};
