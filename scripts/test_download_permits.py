@@ -80,5 +80,64 @@ class PaginationTests(unittest.TestCase):
         self.assertEqual(pages[0]['returned'], 0)
 
 
+class SnapshotRetryTests(unittest.TestCase):
+    def fetch(self, backend):
+        with patch.object(downloader, 'call', side_effect=backend) as call, \
+                patch.object(downloader.time, 'sleep'), \
+                patch.object(downloader.fetch_consistent_list.retry, 'sleep') as sleep, \
+                contextlib.redirect_stdout(io.StringIO()):
+            result = downloader.fetch_consistent_list({}, 'public-list')
+            return result, call, sleep
+
+    def test_count_drift_restarts_with_fresh_pages(self):
+        backend = PublicList(501)
+
+        def changing_source(context, actions):
+            result = backend(context, actions)
+            if backend.count_calls == 2:
+                # Add a row after the first attempt's final count. The next
+                # attempt must include it and use the new independent count.
+                backend.rows = PublicList(502).rows
+                if actions[0]['descriptor'] == downloader.LIST_DESCRIPTOR:
+                    result['actions'][0]['returnValue']['totalCount'] = 502
+            return result
+
+        (records, pages, expected, _), call, sleep = self.fetch(changing_source)
+        self.assertEqual((len(records), expected), (502, 502))
+        self.assertEqual([page['returned'] for page in pages], [500, 2, 0])
+        first_pages = [args.args[1][0] for args in call.call_args_list
+                       if args.args[1][0]['descriptor'] == downloader.LIST_QUERY_DESCRIPTOR
+                       and 'where' not in args.args[1][0]['params']['listRecordsQuery']]
+        self.assertEqual(len(first_pages), 2)
+        self.assertEqual([args.args[0] for args in sleep.call_args_list], [5])
+
+    def test_persistent_count_drift_stops_after_three_attempts(self):
+        backend = PublicList(1)
+
+        def changing_source(context, actions):
+            result = backend(context, actions)
+            if actions[0]['descriptor'] == downloader.LIST_DESCRIPTOR:
+                result['actions'][0]['returnValue']['totalCount'] = backend.count_calls
+            return result
+
+        with patch.object(downloader.fetch_consistent_list.retry, 'sleep') as sleep, \
+                patch.object(downloader, 'call', side_effect=changing_source), \
+                patch.object(downloader.time, 'sleep'), \
+                contextlib.redirect_stdout(io.StringIO()):
+            with self.assertRaises(downloader.SourceCountChanged):
+                downloader.fetch_consistent_list({}, 'public-list')
+            self.assertEqual([args.args[0] for args in sleep.call_args_list], [5, 5])
+        self.assertEqual(backend.count_calls, 6)
+
+    def test_other_validation_errors_fail_without_retry(self):
+        with patch.object(downloader.fetch_consistent_list.retry, 'sleep') as sleep:
+            with self.assertRaisesRegex(RuntimeError, 'Incomplete pagination'):
+                with patch.object(downloader, 'call', PublicList(5, 'omitted-record')), \
+                        patch.object(downloader.time, 'sleep'), \
+                        contextlib.redirect_stdout(io.StringIO()):
+                    downloader.fetch_consistent_list({}, 'public-list')
+            sleep.assert_not_called()
+
+
 if __name__ == '__main__':
     unittest.main()
