@@ -15,7 +15,7 @@ from email.utils import parsedate_to_datetime
 from pathlib import Path
 
 import httpx
-from tenacity import retry, retry_if_exception, stop_after_attempt, stop_before_delay, wait_random_exponential
+from tenacity import retry, retry_if_exception, retry_if_exception_type, stop_after_attempt, stop_before_delay, wait_fixed, wait_random_exponential
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = 'https://sf-row.my.site.com/s/guest-permit-list'
@@ -158,6 +158,23 @@ def list_count(context, list_id):
         raise RuntimeError('API did not return an independent source count')
     return count
 
+class SourceCountChanged(RuntimeError):
+    """The public list changed while its pages were being read."""
+
+
+def log_snapshot_retry(state):
+    logging.getLogger(__name__).warning(
+        'Source count changed during export, attempt %s/3; restarting pagination in %.1fs',
+        state.attempt_number, state.next_action.sleep)
+
+
+@retry(retry=retry_if_exception_type(SourceCountChanged), wait=wait_fixed(5),
+       stop=stop_after_attempt(3), before_sleep=log_snapshot_retry, reraise=True)
+def fetch_consistent_list(context, list_id, page_size=500):
+    """Retry only count drift, discarding all pages from each rejected attempt."""
+    return fetch_list(context, list_id, page_size)
+
+
 def fetch_list(context, list_id, page_size=500):
     """Walk immutable record IDs, never increasing Salesforce's capped offset."""
     if not 1 <= page_size <= 2000:
@@ -210,7 +227,7 @@ def fetch_list(context, list_id, page_size=500):
         time.sleep(.2)
     final_count = list_count(context, list_id)
     if final_count != expected:
-        raise RuntimeError('Source count changed during export; rerun for a consistent snapshot')
+        raise SourceCountChanged('Source count changed during export; rerun for a consistent snapshot')
     if len(records) != expected:
         raise RuntimeError(f'Incomplete pagination: {len(records)} of {expected}')
     return records, pages, expected, api_name
@@ -226,7 +243,7 @@ def main():
     discovery = call(context, [action('serviceComponent://ui.communities.components.aura.components.forceCommunity.objectHome.ObjectHomeCommunitiesController/ACTION$getListViewIdObject',
         {'filterName': 'TOW_Sign_Permits', 'scope': ENTITY, 'layout': 'FULL', 'showPinnedList': False, 'useFilterNameFromRoute': False})])
     list_id = discovery['actions'][0]['returnValue']['listViewId']
-    records, pages, expected, api_name = fetch_list(context, list_id)
+    records, pages, expected, api_name = fetch_consistent_list(context, list_id)
     (data / 'permits_raw.json').write_text(json.dumps(list(records.values()), indent=2))
     if not args.skip_details:
         cache_path = data / 'permit_details.json'
